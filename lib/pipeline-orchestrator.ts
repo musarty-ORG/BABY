@@ -334,6 +334,72 @@ export class PipelineOrchestrator {
     return instructions.length > 0 ? `\n\nSTYLE REQUIREMENTS:\n${instructions.map((i) => `- ${i}`).join("\n")}` : ""
   }
 
+  private parseJsonSafely(jsonString: string): Record<string, string> | null {
+    try {
+      // First, try direct parsing
+      return JSON.parse(jsonString)
+    } catch (error) {
+      console.log("Direct JSON parse failed, trying cleanup...")
+
+      try {
+        // Clean up the string step by step
+        let cleaned = jsonString.trim()
+
+        // Remove markdown code blocks
+        cleaned = cleaned.replace(/^```json\s*/, "").replace(/\s*```$/, "")
+        cleaned = cleaned.replace(/^```\s*/, "").replace(/\s*```$/, "")
+
+        // Handle escaped quotes - this is the main issue
+        // Replace \" with " but be careful not to break actual JSON structure
+        cleaned = cleaned.replace(/\\"/g, '"')
+
+        // Try parsing the cleaned version
+        return JSON.parse(cleaned)
+      } catch (secondError) {
+        console.log("Cleanup parse failed, trying regex extraction...")
+
+        try {
+          // Try to extract JSON using regex patterns
+          const patterns = [/```json\s*([\s\S]*?)\s*```/, /```\s*([\s\S]*?)\s*```/, /{\s*"[^"]*":\s*"[\s\S]*?}/]
+
+          for (const pattern of patterns) {
+            const match = jsonString.match(pattern)
+            if (match) {
+              let extracted = match[1] || match[0]
+
+              // Clean the extracted content
+              extracted = extracted.trim()
+              extracted = extracted.replace(/\\"/g, '"')
+
+              try {
+                return JSON.parse(extracted)
+              } catch (parseError) {
+                continue
+              }
+            }
+          }
+
+          // If all regex patterns fail, try a more aggressive approach
+          // Look for the main JSON structure
+          const jsonStart = jsonString.indexOf("{")
+          const jsonEnd = jsonString.lastIndexOf("}")
+
+          if (jsonStart !== -1 && jsonEnd !== -1 && jsonEnd > jsonStart) {
+            let extracted = jsonString.substring(jsonStart, jsonEnd + 1)
+            extracted = extracted.replace(/\\"/g, '"')
+
+            return JSON.parse(extracted)
+          }
+
+          return null
+        } catch (regexError) {
+          console.log("All parsing attempts failed:", regexError)
+          return null
+        }
+      }
+    }
+  }
+
   async executeFullPipeline(request: PipelineRequest): Promise<PipelineResult> {
     const startTime = Date.now()
     const iterations: PipelineIteration[] = []
@@ -394,8 +460,11 @@ export class PipelineOrchestrator {
 
       // Handle codegen mode - skip E2B execution and parse JSON
       if (request.mode === "codegen" && currentCode) {
-        try {
-          codeFiles = JSON.parse(currentCode)
+        // Use the new safe JSON parser
+        const parsedFiles = this.parseJsonSafely(currentCode)
+
+        if (parsedFiles) {
+          codeFiles = parsedFiles
           await pipelineLogger.logStage(
             request.requestId,
             "CODEGEN_PARSE_SUCCESS",
@@ -403,21 +472,72 @@ export class PipelineOrchestrator {
             null,
             0,
           )
-        } catch (parseError) {
+        } else {
           await pipelineLogger.logError(
             request.requestId,
             "ORCHESTRATION",
-            `Failed to parse codegen JSON: ${parseError}`,
-            false,
+            `All JSON parsing attempts failed for: ${currentCode.substring(0, 200)}...`,
+            true,
           )
-          // Try to extract JSON from the response
-          const jsonMatch = currentCode.match(/```json\s*([\s\S]*?)\s*```/)
-          if (jsonMatch) {
-            try {
-              codeFiles = JSON.parse(jsonMatch[1])
-            } catch (secondParseError) {
-              console.error("Failed to parse extracted JSON:", secondParseError)
-            }
+
+          // Final fallback - create minimal structure with the raw content
+          codeFiles = {
+            "app/page.tsx": `// Generated content could not be parsed properly
+// Raw AI output:
+/*
+${currentCode}
+*/
+
+import React from 'react';
+
+export default function HomePage() {
+  return (
+    <div className="min-h-screen bg-gray-900 text-white p-8">
+      <h1 className="text-4xl font-bold mb-4">Generated Website</h1>
+      <p className="text-gray-400">
+        The AI generated content but it could not be parsed properly. 
+        Please check the raw output in the comments above.
+      </p>
+    </div>
+  );
+}`,
+            "package.json": JSON.stringify(
+              {
+                name: "generated-website",
+                version: "0.1.0",
+                private: true,
+                scripts: {
+                  dev: "next dev",
+                  build: "next build",
+                  start: "next start",
+                  lint: "next lint",
+                },
+                dependencies: {
+                  next: "14.0.0",
+                  react: "^18.0.0",
+                  "react-dom": "^18.0.0",
+                },
+                devDependencies: {
+                  "@types/node": "^20.0.0",
+                  "@types/react": "^18.0.0",
+                  "@types/react-dom": "^18.0.0",
+                  typescript: "^5.0.0",
+                  tailwindcss: "^3.0.0",
+                  postcss: "^8.0.0",
+                  autoprefixer: "^10.0.0",
+                },
+              },
+              null,
+              2,
+            ),
+            "README.md": `# Generated Website
+
+The AI generated content but JSON parsing failed. Raw output:
+
+\`\`\`
+${currentCode}
+\`\`\`
+`,
           }
         }
       }
@@ -472,20 +592,21 @@ Generate improved code that addresses the feedback.`
         codeGenPrompt = `You are v0-1.0-md, a legendary website-builder.
 Generate a complete Next.js + Tailwind landing page for: "${enhancedPrompt}"${styleInstructions}
 
-OUTPUT FORMAT (exactly, valid JSON):
-\`\`\`json
+CRITICAL: Output ONLY valid JSON without any markdown formatting, explanations, or escaped quotes.
+
+Expected format (no backticks, no markdown, no escaped quotes):
 {
-  "pages/index.tsx": "<entire file content>",
-  "styles/globals.css": "<entire file content>",
-  "components/Header.tsx": "<entire file content>",
-  "components/Hero.tsx": "<entire file content>",
-  "components/Features.tsx": "<entire file content>",
-  "components/Footer.tsx": "<entire file content>",
-  "package.json": "<entire file content>",
-  "tailwind.config.js": "<entire file content>",
-  "next.config.js": "<entire file content>"
+  "app/page.tsx": "import React from 'react';\\n\\nexport default function HomePage() {\\n  return (\\n    <div className=\\"min-h-screen bg-white\\">\\n      <h1>Your content here</h1>\\n    </div>\\n  );\\n}",
+  "app/layout.tsx": "import './globals.css';\\n\\nexport default function RootLayout({ children }: { children: React.ReactNode }) {\\n  return (\\n    <html lang=\\"en\\">\\n      <body>{children}</body>\\n    </html>\\n  );\\n}",
+  "app/globals.css": "@tailwind base;\\n@tailwind components;\\n@tailwind utilities;",
+  "components/Header.tsx": "export default function Header() { return <header>Header</header>; }",
+  "components/Hero.tsx": "export default function Hero() { return <section>Hero</section>; }",
+  "components/Features.tsx": "export default function Features() { return <section>Features</section>; }",
+  "components/Footer.tsx": "export default function Footer() { return <footer>Footer</footer>; }",
+  "package.json": "{\\n  \\"name\\": \\"generated-website\\",\\n  \\"version\\": \\"0.1.0\\",\\n  \\"private\\": true,\\n  \\"scripts\\": {\\n    \\"dev\\": \\"next dev\\",\\n    \\"build\\": \\"next build\\",\\n    \\"start\\": \\"next start\\",\\n    \\"lint\\": \\"next lint\\"\\n  },\\n  \\"dependencies\\": {\\n    \\"next\\": \\"14.0.0\\",\\n    \\"react\\": \\"^18.0.0\\",\\n    \\"react-dom\\": \\"^18.0.0\\"\\n  },\\n  \\"devDependencies\\": {\\n    \\"@types/node\\": \\"^20.0.0\\",\\n    \\"@types/react\\": \\"^18.0.0\\",\\n    \\"@types/react-dom\\": \\"^18.0.0\\",\\n    \\"typescript\\": \\"^5.0.0\\",\\n    \\"tailwindcss\\": \\"^3.0.0\\",\\n    \\"postcss\\": \\"^8.0.0\\",\\n    \\"autoprefixer\\": \\"^10.0.0\\"\\n  }\\n}",
+  "tailwind.config.js": "module.exports = {\\n  content: ['./app/**/*.{js,ts,jsx,tsx}', './components/**/*.{js,ts,jsx,tsx}'],\\n  theme: { extend: {} },\\n  plugins: []\\n}",
+  "next.config.js": "module.exports = { experimental: { appDir: true } }"
 }
-\`\`\`
 
 Requirements:
 - Use modern React with TypeScript
@@ -498,7 +619,7 @@ Requirements:
 - Make it production-ready
 - Follow the style requirements exactly
 
-No explanations. Only valid JSON.`
+IMPORTANT: Return ONLY the JSON object. No explanations, no markdown, no code blocks, no escaped quotes in the JSON keys or structure.`
       } else {
         // Standard mode with document retrieval
         const docs = await this.retrieveRelevantDocs(enhancedPrompt)
