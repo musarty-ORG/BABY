@@ -17,13 +17,16 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json()
-    const { prompt, agentMode, codeToReview, maxRetries = 3 } = body
+    const { prompt, agentMode, codeToReview, maxRetries = 3, fileUrl, mode, stylePreferences } = body
 
     const request: PipelineRequest = {
       requestId,
       prompt,
       agentMode,
+      mode,
       codeToReview,
+      fileUrl,
+      stylePreferences,
       maxRetries,
       timestamp: new Date().toISOString(),
     }
@@ -54,6 +57,8 @@ export async function POST(req: NextRequest) {
         timestamp: new Date().toISOString(),
         availableEnvVars: {
           GROQ_API_KEY: !!process.env.GROQ_API_KEY,
+          GITHUB_TOKEN: !!process.env.GITHUB_TOKEN,
+          VERCEL_TOKEN: !!process.env.VERCEL_TOKEN,
         },
       },
       { status: 500 },

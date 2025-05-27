@@ -3,9 +3,23 @@ export interface PipelineRequest {
   requestId: string
   prompt: string
   agentMode: "code-gen" | "review" | "full-pipeline"
+  mode?: "codegen" | "standard"
   codeToReview?: string
+  fileUrl?: string
+  stylePreferences?: StylePreferences
   maxRetries?: number
   timestamp: string
+}
+
+export interface StylePreferences {
+  colorScheme?: "light" | "dark" | "custom"
+  primaryColor?: string
+  secondaryColor?: string
+  layoutStyle?: "minimal" | "modern" | "bold" | "classic"
+  typography?: "sans-serif" | "serif" | "monospace"
+  animations?: boolean
+  borderRadius?: "none" | "small" | "medium" | "large"
+  customInstructions?: string
 }
 
 export interface RawCode {
@@ -41,6 +55,9 @@ export interface PipelineResult {
   requestId: string
   originalPrompt: string
   finalCode: string
+  codeFiles?: Record<string, string>
+  deploymentUrl?: string
+  githubRepo?: string
   iterations: PipelineIteration[]
   status: "SUCCESS" | "FAILED" | "PARTIAL"
   totalTime: number
@@ -57,7 +74,7 @@ export interface PipelineIteration {
 }
 
 export interface PipelineError {
-  stage: "CODE_GEN" | "REVIEW" | "ORCHESTRATION"
+  stage: "CODE_GEN" | "REVIEW" | "ORCHESTRATION" | "DEPLOYMENT"
   error: string
   timestamp: string
   recoveryAttempted: boolean
@@ -72,4 +89,17 @@ export interface AuditLog {
   duration: number
   timestamp: string
   metadata?: any
+}
+
+export interface DeploymentRequest {
+  codeFiles: Record<string, string>
+  projectName: string
+  requestId: string
+}
+
+export interface DeploymentResult {
+  success: boolean
+  deploymentUrl?: string
+  githubRepo?: string
+  error?: string
 }

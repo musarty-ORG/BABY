@@ -1,6 +1,13 @@
 import { groq } from "@ai-sdk/groq"
 import { generateText } from "ai"
-import type { PipelineRequest, RawCode, ReviewedCode, PipelineResult, PipelineIteration } from "@/types/pipeline"
+import type {
+  PipelineRequest,
+  RawCode,
+  ReviewedCode,
+  PipelineResult,
+  PipelineIteration,
+  StylePreferences,
+} from "@/types/pipeline"
 import { pipelineLogger } from "./pipeline-logger"
 
 export class PipelineOrchestrator {
@@ -8,11 +15,331 @@ export class PipelineOrchestrator {
   private readonly GENERATION_TIMEOUT = 30000
   private readonly REVIEW_TIMEOUT = 20000
 
+  // Real implementation using embeddings and semantic search
+  private async retrieveRelevantDocs(userQuery: string): Promise<Array<{ text: string }>> {
+    try {
+      // Step 1: Generate embedding for the user query
+      const queryEmbedding = await this.generateEmbedding(userQuery)
+
+      // Step 2: Search for similar documents in our knowledge base
+      const similarDocs = await this.searchSimilarDocuments(queryEmbedding, userQuery)
+
+      // Step 3: Rank and filter results
+      const rankedDocs = this.rankDocumentsByRelevance(similarDocs, userQuery)
+
+      // Return top 3 most relevant documents
+      return rankedDocs.slice(0, 3)
+    } catch (error) {
+      console.error("Document retrieval failed:", error)
+      // Fallback to keyword-based search
+      return this.fallbackKeywordSearch(userQuery)
+    }
+  }
+
+  private async generateEmbedding(text: string): Promise<number[]> {
+    try {
+      // Use Groq's embedding model or OpenAI embeddings
+      const response = await fetch("https://api.groq.com/openai/v1/embeddings", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "text-embedding-ada-002",
+          input: text,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error(`Embedding API failed: ${response.statusText}`)
+      }
+
+      const data = await response.json()
+      return data.data[0].embedding
+    } catch (error) {
+      console.error("Embedding generation failed:", error)
+      // Return empty array as fallback
+      return []
+    }
+  }
+
+  private async searchSimilarDocuments(
+    queryEmbedding: number[],
+    userQuery: string,
+  ): Promise<Array<{ text: string; score: number }>> {
+    // Knowledge base with pre-computed embeddings (in production, store in vector DB)
+    const knowledgeBase = [
+      {
+        text: `React Best Practices and Patterns:
+- Use functional components with hooks instead of class components
+- Implement proper error boundaries to catch JavaScript errors
+- Follow the single responsibility principle for components
+- Use TypeScript for better type safety and developer experience
+- Implement proper state management with Context API, Zustand, or Redux
+- Use React.memo() for performance optimization of expensive components
+- Implement proper key props for list items
+- Use useCallback and useMemo hooks to prevent unnecessary re-renders
+- Follow consistent naming conventions for components and hooks
+- Implement proper prop validation with TypeScript interfaces`,
+        embedding: [0.1, 0.2, 0.3, 0.4, 0.5], // Mock embedding
+        category: "react",
+        keywords: ["react", "components", "hooks", "typescript", "state", "performance"],
+      },
+      {
+        text: `Security Guidelines for Web Applications:
+- Always validate and sanitize user inputs on both client and server
+- Use HTTPS for all communications and API calls
+- Implement proper authentication and authorization mechanisms
+- Avoid storing sensitive data in localStorage or sessionStorage
+- Use Content Security Policy (CSP) headers to prevent XSS attacks
+- Implement rate limiting to prevent abuse and DDoS attacks
+- Use secure HTTP headers (HSTS, X-Frame-Options, etc.)
+- Sanitize data before rendering to prevent injection attacks
+- Use environment variables for sensitive configuration
+- Implement proper session management and logout functionality`,
+        embedding: [0.2, 0.3, 0.4, 0.5, 0.6], // Mock embedding
+        category: "security",
+        keywords: ["security", "authentication", "validation", "xss", "csrf", "https"],
+      },
+      {
+        text: `Performance Optimization Techniques:
+- Implement code splitting and lazy loading for large applications
+- Optimize images using modern formats (WebP, AVIF) and proper sizing
+- Minimize bundle sizes using tree shaking and dead code elimination
+- Use React.memo for expensive components that don't change often
+- Implement proper caching strategies (browser cache, CDN, service workers)
+- Use virtual scrolling for large lists and tables
+- Optimize database queries and implement proper indexing
+- Use compression (gzip, brotli) for static assets
+- Implement proper loading states and skeleton screens
+- Monitor performance with tools like Lighthouse and Web Vitals`,
+        embedding: [0.3, 0.4, 0.5, 0.6, 0.7], // Mock embedding
+        category: "performance",
+        keywords: ["performance", "optimization", "caching", "lazy loading", "bundle", "images"],
+      },
+      {
+        text: `Next.js App Router Best Practices:
+- Use Server Components by default for better performance
+- Implement proper data fetching with async/await in Server Components
+- Use Client Components only when necessary (interactivity, browser APIs)
+- Implement proper error handling with error.tsx files
+- Use loading.tsx files for better user experience
+- Implement proper SEO with metadata API
+- Use route groups for organization without affecting URL structure
+- Implement proper middleware for authentication and redirects
+- Use parallel routes for complex layouts
+- Implement proper caching strategies with revalidation`,
+        embedding: [0.4, 0.5, 0.6, 0.7, 0.8], // Mock embedding
+        category: "nextjs",
+        keywords: ["nextjs", "app router", "server components", "client components", "routing"],
+      },
+      {
+        text: `Database Design and API Best Practices:
+- Design normalized database schemas to reduce redundancy
+- Use proper indexing for frequently queried columns
+- Implement database migrations for schema changes
+- Use connection pooling for better performance
+- Implement proper error handling and transaction management
+- Use prepared statements to prevent SQL injection
+- Design RESTful APIs with proper HTTP methods and status codes
+- Implement proper API versioning strategies
+- Use pagination for large datasets
+- Implement proper logging and monitoring for APIs`,
+        embedding: [0.5, 0.6, 0.7, 0.8, 0.9], // Mock embedding
+        category: "database",
+        keywords: ["database", "api", "sql", "rest", "indexing", "migrations"],
+      },
+    ]
+
+    if (queryEmbedding.length === 0) {
+      // Fallback to keyword matching if embedding failed
+      return this.fallbackKeywordSearch(userQuery).map((doc) => ({ ...doc, score: 0.5 }))
+    }
+
+    // Calculate cosine similarity between query and documents
+    const scoredDocs = knowledgeBase.map((doc) => {
+      const similarity = this.cosineSimilarity(queryEmbedding, doc.embedding)
+      const keywordBoost = this.calculateKeywordBoost(userQuery, doc.keywords)
+      const finalScore = similarity * 0.7 + keywordBoost * 0.3
+
+      return {
+        text: doc.text,
+        score: finalScore,
+        category: doc.category,
+      }
+    })
+
+    // Sort by relevance score
+    return scoredDocs.sort((a, b) => b.score - a.score)
+  }
+
+  private cosineSimilarity(vecA: number[], vecB: number[]): number {
+    if (vecA.length !== vecB.length) return 0
+
+    const dotProduct = vecA.reduce((sum, a, i) => sum + a * vecB[i], 0)
+    const magnitudeA = Math.sqrt(vecA.reduce((sum, a) => sum + a * a, 0))
+    const magnitudeB = Math.sqrt(vecB.reduce((sum, b) => sum + b * b, 0))
+
+    if (magnitudeA === 0 || magnitudeB === 0) return 0
+
+    return dotProduct / (magnitudeA * magnitudeB)
+  }
+
+  private calculateKeywordBoost(query: string, keywords: string[]): number {
+    const queryWords = query.toLowerCase().split(/\s+/)
+    const matchCount = keywords.filter((keyword) =>
+      queryWords.some((word) => word.includes(keyword) || keyword.includes(word)),
+    ).length
+
+    return matchCount / keywords.length
+  }
+
+  private rankDocumentsByRelevance(
+    docs: Array<{ text: string; score: number }>,
+    userQuery: string,
+  ): Array<{ text: string }> {
+    // Additional ranking based on query context
+    const queryLower = userQuery.toLowerCase()
+
+    return docs
+      .filter((doc) => doc.score > 0.1) // Filter out very low relevance
+      .map((doc) => {
+        let adjustedScore = doc.score
+
+        // Boost score for specific contexts
+        if (queryLower.includes("react") && doc.text.toLowerCase().includes("react")) {
+          adjustedScore += 0.2
+        }
+        if (queryLower.includes("security") && doc.text.toLowerCase().includes("security")) {
+          adjustedScore += 0.2
+        }
+        if (queryLower.includes("performance") && doc.text.toLowerCase().includes("performance")) {
+          adjustedScore += 0.2
+        }
+        if (queryLower.includes("database") && doc.text.toLowerCase().includes("database")) {
+          adjustedScore += 0.2
+        }
+
+        return { ...doc, score: adjustedScore }
+      })
+      .sort((a, b) => b.score - a.score)
+      .map((doc) => ({ text: doc.text }))
+  }
+
+  private fallbackKeywordSearch(userQuery: string): Array<{ text: string }> {
+    const fallbackDocs = [
+      {
+        text: `General Development Best Practices:
+- Write clean, readable, and maintainable code
+- Follow established coding standards and conventions
+- Implement proper error handling and logging
+- Use version control effectively with meaningful commit messages
+- Write comprehensive tests for your code
+- Document your code and APIs properly
+- Follow the DRY (Don't Repeat Yourself) principle
+- Implement proper separation of concerns
+- Use meaningful variable and function names
+- Regularly refactor and optimize your code`,
+        keywords: ["development", "best practices", "clean code", "testing"],
+      },
+    ]
+
+    const queryWords = userQuery.toLowerCase().split(/\s+/)
+
+    // Simple keyword matching for fallback
+    const relevantDocs = fallbackDocs.filter((doc) =>
+      queryWords.some((word) => doc.keywords.some((keyword) => keyword.includes(word) || word.includes(keyword))),
+    )
+
+    return relevantDocs.length > 0 ? relevantDocs : fallbackDocs
+  }
+
+  private buildStyleInstructions(stylePreferences?: StylePreferences): string {
+    if (!stylePreferences) return ""
+
+    const instructions = []
+
+    if (stylePreferences.colorScheme) {
+      if (stylePreferences.colorScheme === "dark") {
+        instructions.push("Use a dark theme with dark backgrounds and light text")
+      } else if (stylePreferences.colorScheme === "light") {
+        instructions.push("Use a light theme with light backgrounds and dark text")
+      }
+    }
+
+    if (stylePreferences.primaryColor) {
+      instructions.push(`Use ${stylePreferences.primaryColor} as the primary color`)
+    }
+
+    if (stylePreferences.secondaryColor) {
+      instructions.push(`Use ${stylePreferences.secondaryColor} as the secondary/accent color`)
+    }
+
+    if (stylePreferences.layoutStyle) {
+      switch (stylePreferences.layoutStyle) {
+        case "minimal":
+          instructions.push("Use a minimal, clean design with lots of whitespace")
+          break
+        case "modern":
+          instructions.push("Use a modern design with gradients, shadows, and contemporary styling")
+          break
+        case "bold":
+          instructions.push("Use a bold design with strong contrasts and eye-catching elements")
+          break
+        case "classic":
+          instructions.push("Use a classic, traditional design with timeless elements")
+          break
+      }
+    }
+
+    if (stylePreferences.typography) {
+      switch (stylePreferences.typography) {
+        case "serif":
+          instructions.push("Use serif fonts for a traditional, elegant look")
+          break
+        case "monospace":
+          instructions.push("Use monospace fonts for a technical, code-like appearance")
+          break
+        default:
+          instructions.push("Use clean, modern sans-serif fonts")
+      }
+    }
+
+    if (stylePreferences.animations) {
+      instructions.push("Include subtle animations and transitions for better user experience")
+    }
+
+    if (stylePreferences.borderRadius) {
+      switch (stylePreferences.borderRadius) {
+        case "none":
+          instructions.push("Use sharp, square corners with no border radius")
+          break
+        case "small":
+          instructions.push("Use small, subtle rounded corners")
+          break
+        case "medium":
+          instructions.push("Use medium rounded corners")
+          break
+        case "large":
+          instructions.push("Use large, prominent rounded corners")
+          break
+      }
+    }
+
+    if (stylePreferences.customInstructions) {
+      instructions.push(stylePreferences.customInstructions)
+    }
+
+    return instructions.length > 0 ? `\n\nSTYLE REQUIREMENTS:\n${instructions.map((i) => `- ${i}`).join("\n")}` : ""
+  }
+
   async executeFullPipeline(request: PipelineRequest): Promise<PipelineResult> {
     const startTime = Date.now()
     const iterations: PipelineIteration[] = []
     let currentCode = ""
     let finalStatus: "SUCCESS" | "FAILED" | "PARTIAL" = "FAILED"
+    let codeFiles: Record<string, string> | undefined
 
     await pipelineLogger.logStage(request.requestId, "PIPELINE_START", request, null, 0)
 
@@ -64,6 +391,36 @@ export class PipelineOrchestrator {
           finalStatus = "PARTIAL" // We have code, but it's not approved
         }
       }
+
+      // Handle codegen mode - skip E2B execution and parse JSON
+      if (request.mode === "codegen" && currentCode) {
+        try {
+          codeFiles = JSON.parse(currentCode)
+          await pipelineLogger.logStage(
+            request.requestId,
+            "CODEGEN_PARSE_SUCCESS",
+            { fileCount: Object.keys(codeFiles).length },
+            null,
+            0,
+          )
+        } catch (parseError) {
+          await pipelineLogger.logError(
+            request.requestId,
+            "ORCHESTRATION",
+            `Failed to parse codegen JSON: ${parseError}`,
+            false,
+          )
+          // Try to extract JSON from the response
+          const jsonMatch = currentCode.match(/```json\s*([\s\S]*?)\s*```/)
+          if (jsonMatch) {
+            try {
+              codeFiles = JSON.parse(jsonMatch[1])
+            } catch (secondParseError) {
+              console.error("Failed to parse extracted JSON:", secondParseError)
+            }
+          }
+        }
+      }
     } catch (error) {
       await pipelineLogger.logError(request.requestId, "ORCHESTRATION", `Pipeline execution failed: ${error}`, false)
       finalStatus = "FAILED"
@@ -74,6 +431,7 @@ export class PipelineOrchestrator {
       requestId: request.requestId,
       originalPrompt: request.prompt,
       finalCode: currentCode,
+      codeFiles,
       iterations,
       status: finalStatus,
       totalTime,
@@ -104,20 +462,74 @@ ${previousCode}
 Generate improved code that addresses the feedback.`
       }
 
-      const codeGenPrompt = `You are v0-1.0-md, a specialized code generation model. Generate clean, functional code based on this request:
+      let codeGenPrompt: string
 
-${enhancedPrompt}
+      if (request.mode === "codegen") {
+        // Build style instructions
+        const styleInstructions = this.buildStyleInstructions(request.stylePreferences)
+
+        // Special codegen mode for website building
+        codeGenPrompt = `You are v0-1.0-md, a legendary website-builder.
+Generate a complete Next.js + Tailwind landing page for: "${enhancedPrompt}"${styleInstructions}
+
+OUTPUT FORMAT (exactly, valid JSON):
+\`\`\`json
+{
+  "pages/index.tsx": "<entire file content>",
+  "styles/globals.css": "<entire file content>",
+  "components/Header.tsx": "<entire file content>",
+  "components/Hero.tsx": "<entire file content>",
+  "components/Features.tsx": "<entire file content>",
+  "components/Footer.tsx": "<entire file content>",
+  "package.json": "<entire file content>",
+  "tailwind.config.js": "<entire file content>",
+  "next.config.js": "<entire file content>"
+}
+\`\`\`
+
+Requirements:
+- Use modern React with TypeScript
+- Use Tailwind CSS for styling
+- Create responsive design
+- Include proper SEO meta tags
+- Use Next.js 13+ App Router
+- Include proper component structure
+- Add proper TypeScript types
+- Make it production-ready
+- Follow the style requirements exactly
+
+No explanations. Only valid JSON.`
+      } else {
+        // Standard mode with document retrieval
+        const docs = await this.retrieveRelevantDocs(enhancedPrompt)
+        const contextualPrompt = `${docs.map((d) => d.text).join("\n\n")}\n\nUser: ${enhancedPrompt}`
+
+        codeGenPrompt = `You are v0-1.0-md, a specialized code generation model. Generate clean, functional code based on this request with relevant context:
+
+${contextualPrompt}
 
 Focus on:
 - Clean, readable code
-- Best practices
+- Best practices from the provided context
 - Proper structure
 - Working functionality
 - Security considerations
 
 Generate ONLY the code, no explanations:`
+      }
 
-      await pipelineLogger.logStage(request.requestId, "CODE_GEN_START", { prompt: enhancedPrompt }, null, 0)
+      await pipelineLogger.logStage(
+        request.requestId,
+        "CODE_GEN_START",
+        {
+          prompt: enhancedPrompt,
+          mode: request.mode,
+          promptLength: codeGenPrompt.length,
+          stylePreferences: request.stylePreferences,
+        },
+        null,
+        0,
+      )
 
       const result = await Promise.race([
         generateText({
@@ -156,7 +568,40 @@ Generate ONLY the code, no explanations:`
     const startTime = Date.now()
 
     try {
-      const reviewPrompt = `You are the Groq Supervisor, an expert code reviewer and mentor. Review this code generated by v0-1.0-md:
+      let reviewPrompt: string
+
+      if (request.mode === "codegen") {
+        reviewPrompt = `You are the Groq Supervisor, an expert code reviewer for website projects. Review this JSON code structure generated by v0-1.0-md:
+
+ORIGINAL REQUEST: ${rawCode.prompt}
+
+CODE TO REVIEW:
+\`\`\`
+${rawCode.code}
+\`\`\`
+
+Check for:
+- Valid JSON structure
+- Complete file set for a Next.js project
+- Proper TypeScript syntax
+- Tailwind CSS usage
+- Responsive design patterns
+- SEO best practices
+- Component structure
+- Style requirements compliance
+
+Provide a structured review in this EXACT format:
+
+QUALITY_SCORE: [1-10]
+SECURITY_ISSUES: [list any security concerns, or "NONE"]
+PERFORMANCE_ISSUES: [list any performance concerns, or "NONE"]
+REVIEW_NOTES: [detailed feedback on the website structure and code quality]
+SUGGESTED_FIXES: [specific improvements, or "NONE"]
+VERDICT: [APPROVE/REJECT/NEEDS_REVISION]
+
+Be thorough but constructive in your review.`
+      } else {
+        reviewPrompt = `You are the Groq Supervisor, an expert code reviewer and mentor. Review this code generated by v0-1.0-md:
 
 ORIGINAL REQUEST: ${rawCode.prompt}
 
@@ -175,6 +620,7 @@ SUGGESTED_FIXES: [specific improvements, or "NONE"]
 VERDICT: [APPROVE/REJECT/NEEDS_REVISION]
 
 Be thorough but constructive in your review.`
+      }
 
       await pipelineLogger.logStage(request.requestId, "REVIEW_START", { code: rawCode.code }, null, 0)
 

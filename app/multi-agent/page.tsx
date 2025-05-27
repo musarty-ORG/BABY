@@ -2,77 +2,173 @@
 
 import type React from "react"
 import { useState } from "react"
-import { Send, Code, Shield, Brain, Zap, CheckCircle, Clock, AlertTriangle, RotateCcw } from "lucide-react"
-import type { PipelineResult, PipelineIteration } from "@/types/pipeline"
+import {
+  Send,
+  Code,
+  Download,
+  FileText,
+  Globe,
+  Zap,
+  CheckCircle,
+  Clock,
+  AlertTriangle,
+  Palette,
+  Upload,
+  ExternalLink,
+} from "lucide-react"
+import type { PipelineResult, StylePreferences } from "@/types/pipeline"
+import JSZip from "jszip"
+import * as FileSaver from "file-saver"
 
 export default function MultiAgentPipeline() {
   const [prompt, setPrompt] = useState("")
-  const [agentMode, setAgentMode] = useState<"code-gen" | "review" | "full-pipeline">("full-pipeline")
+  const [fileUrl, setFileUrl] = useState("")
   const [isProcessing, setIsProcessing] = useState(false)
   const [currentStep, setCurrentStep] = useState<string>("")
   const [pipelineResult, setPipelineResult] = useState<PipelineResult | null>(null)
-  const [streamingResponse, setStreamingResponse] = useState("")
+  const [selectedFile, setSelectedFile] = useState<string | null>(null)
+  const [showStyleOptions, setShowStyleOptions] = useState(false)
+  const [isDeploying, setIsDeploying] = useState(false)
+
+  // Style preferences state
+  const [stylePreferences, setStylePreferences] = useState<StylePreferences>({
+    colorScheme: "light",
+    layoutStyle: "modern",
+    typography: "sans-serif",
+    animations: true,
+    borderRadius: "medium",
+  })
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!prompt.trim()) return
 
     setIsProcessing(true)
-    setStreamingResponse("")
+    setCurrentStep("Initializing website generation pipeline...")
     setPipelineResult(null)
-    setCurrentStep("Initializing pipeline...")
+    setSelectedFile(null)
 
     try {
-      if (agentMode === "full-pipeline") {
-        setCurrentStep("Executing full pipeline with error handling...")
+      setCurrentStep("Generating complete Next.js website with AI...")
 
-        const response = await fetch("/api/multi-agent", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prompt, agentMode }),
-        })
+      const response = await fetch("/api/multi-agent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt,
+          fileUrl: fileUrl || undefined,
+          agentMode: "full-pipeline",
+          mode: "codegen",
+          stylePreferences,
+        }),
+      })
 
-        const result = await response.json()
+      const result = await response.json()
 
-        if (response.ok) {
-          setPipelineResult(result)
-        } else {
-          // Handle API errors gracefully
-          setPipelineResult({
-            ...result,
-            status: "FAILED",
-          })
-        }
+      if (response.ok) {
+        setPipelineResult(result)
+        setCurrentStep("Website generation complete!")
       } else {
-        // Handle streaming for individual agents
-        setCurrentStep(`Running ${agentMode} with logging...`)
-
-        const response = await fetch("/api/multi-agent", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prompt, agentMode }),
+        setPipelineResult({
+          ...result,
+          status: "FAILED",
         })
-
-        if (response.body) {
-          const reader = response.body.getReader()
-          const decoder = new TextDecoder()
-
-          while (true) {
-            const { done, value } = await reader.read()
-            if (done) break
-
-            const chunk = decoder.decode(value)
-            setStreamingResponse((prev) => prev + chunk)
-          }
-        }
+        setCurrentStep("Website generation failed - check logs for details")
       }
     } catch (error) {
       console.error("Pipeline error:", error)
       setCurrentStep("Pipeline failed - check logs for details")
     } finally {
       setIsProcessing(false)
-      setCurrentStep("")
+      setTimeout(() => setCurrentStep(""), 3000)
     }
+  }
+
+  const handleDeploy = async () => {
+    if (!pipelineResult?.codeFiles) return
+
+    setIsDeploying(true)
+    setCurrentStep("Deploying to Vercel...")
+
+    try {
+      const response = await fetch("/api/deploy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          codeFiles: pipelineResult.codeFiles,
+          projectName: prompt.split(" ").slice(0, 3).join("-"),
+          requestId: pipelineResult.requestId,
+        }),
+      })
+
+      const deployResult = await response.json()
+
+      if (deployResult.success) {
+        setPipelineResult({
+          ...pipelineResult,
+          deploymentUrl: deployResult.deploymentUrl,
+          githubRepo: deployResult.githubRepo,
+        })
+        setCurrentStep("Deployment successful!")
+      } else {
+        setCurrentStep(`Deployment failed: ${deployResult.error}`)
+      }
+    } catch (error) {
+      console.error("Deployment error:", error)
+      setCurrentStep("Deployment failed - check logs for details")
+    } finally {
+      setIsDeploying(false)
+      setTimeout(() => setCurrentStep(""), 3000)
+    }
+  }
+
+  const downloadZip = async () => {
+    if (!pipelineResult?.codeFiles) return
+
+    const zip = new JSZip()
+
+    // Add all files to the zip
+    Object.entries(pipelineResult.codeFiles).forEach(([filePath, content]) => {
+      zip.file(filePath, content)
+    })
+
+    // Add a README.md file
+    const readme = `# Generated Next.js Website
+
+This website was generated using the NEXUS AI Multi-Agent Pipeline.
+
+## Original Prompt
+${pipelineResult.originalPrompt}
+
+## Generated Files
+${Object.keys(pipelineResult.codeFiles)
+  .map((file) => `- ${file}`)
+  .join("\n")}
+
+## Setup Instructions
+1. Extract this ZIP file
+2. Run \`npm install\` to install dependencies
+3. Run \`npm run dev\` to start the development server
+4. Open http://localhost:3000 in your browser
+
+## Pipeline Stats
+- Request ID: ${pipelineResult.requestId}
+- Status: ${pipelineResult.status}
+- Total Time: ${pipelineResult.totalTime}ms
+- Iterations: ${pipelineResult.iterations.length}
+
+${pipelineResult.deploymentUrl ? `## Live Deployment\n${pipelineResult.deploymentUrl}` : ""}
+${pipelineResult.githubRepo ? `## GitHub Repository\n${pipelineResult.githubRepo}` : ""}
+
+Generated by NEXUS AI Pipeline v2.0
+`
+
+    zip.file("README.md", readme)
+
+    // Generate and download the zip
+    const content = await zip.generateAsync({ type: "blob" })
+    const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, "-")
+    FileSaver.saveAs(content, `nexus-website-${timestamp}.zip`)
   }
 
   const getStatusColor = (status: string) => {
@@ -88,17 +184,12 @@ export default function MultiAgentPipeline() {
     }
   }
 
-  const getVerdictColor = (verdict: string) => {
-    switch (verdict) {
-      case "APPROVE":
-        return "text-green-400"
-      case "REJECT":
-        return "text-red-400"
-      case "NEEDS_REVISION":
-        return "text-yellow-400"
-      default:
-        return "text-gray-400"
-    }
+  const getFileIcon = (filePath: string) => {
+    if (filePath.endsWith(".tsx") || filePath.endsWith(".ts")) return <Code className="w-4 h-4 text-blue-400" />
+    if (filePath.endsWith(".css")) return <FileText className="w-4 h-4 text-purple-400" />
+    if (filePath.endsWith(".json")) return <FileText className="w-4 h-4 text-yellow-400" />
+    if (filePath.endsWith(".js")) return <Code className="w-4 h-4 text-green-400" />
+    return <FileText className="w-4 h-4 text-gray-400" />
   }
 
   return (
@@ -107,8 +198,8 @@ export default function MultiAgentPipeline() {
       <div className="border-b border-green-500/30 bg-black/90 backdrop-blur-sm sticky top-0 z-10">
         <div className="max-w-6xl mx-auto px-4 py-4">
           <div className="flex items-center gap-3">
-            <Brain className="w-6 h-6 text-green-400" />
-            <span className="text-xl font-bold text-green-400">MULTI-AGENT PIPELINE v2.0</span>
+            <Globe className="w-6 h-6 text-green-400" />
+            <span className="text-xl font-bold text-green-400">NEXUS WEBSITE BUILDER v2.0</span>
 
             <div className="ml-auto flex items-center gap-4">
               <div className="flex items-center gap-2 text-xs">
@@ -116,12 +207,8 @@ export default function MultiAgentPipeline() {
                 <span className="text-blue-400">v0-1.0-md</span>
               </div>
               <div className="flex items-center gap-2 text-xs">
-                <Shield className="w-4 h-4 text-purple-400" />
-                <span className="text-purple-400">Groq Supervisor</span>
-              </div>
-              <div className="flex items-center gap-2 text-xs">
                 <Zap className="w-4 h-4 text-green-400" />
-                <span className="text-green-400">Orchestrator</span>
+                <span className="text-green-400">AI-Powered</span>
               </div>
             </div>
           </div>
@@ -129,43 +216,177 @@ export default function MultiAgentPipeline() {
       </div>
 
       <div className="max-w-6xl mx-auto px-4 py-6">
-        {/* Agent Mode Selection */}
-        <div className="mb-6">
-          <label className="block text-sm font-semibold text-green-400 mb-2">AGENT MODE:</label>
-          <div className="flex gap-2">
-            {[
-              { value: "code-gen", label: "Code Generator (v0-1.0-md)", icon: Code },
-              { value: "review", label: "Code Reviewer (Groq)", icon: Shield },
-              { value: "full-pipeline", label: "Full Pipeline with Retry Logic", icon: Brain },
-            ].map(({ value, label, icon: Icon }) => (
-              <button
-                key={value}
-                onClick={() => setAgentMode(value as any)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-all ${
-                  agentMode === value
-                    ? "bg-green-500/20 border-green-500/50 text-green-300"
-                    : "bg-gray-800/50 border-green-500/20 text-green-500/70 hover:border-green-500/40"
-                }`}
-              >
-                <Icon className="w-4 h-4" />
-                <span className="text-sm">{label}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-
         {/* Input Form */}
         <form onSubmit={handleSubmit} className="mb-6">
-          <div className="bg-gray-900/50 border border-green-500/30 rounded-lg p-4">
-            <label className="block text-sm font-semibold text-green-400 mb-2">PROMPT:</label>
-            <textarea
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              placeholder="Describe what you want to build..."
-              className="w-full h-32 bg-gray-800/50 border border-green-500/30 rounded-lg px-4 py-3 text-green-400 placeholder-green-500/50 focus:outline-none focus:border-green-400 resize-none"
-              disabled={isProcessing}
-            />
-            <div className="flex justify-between items-center mt-4">
+          <div className="bg-gray-900/50 border border-green-500/30 rounded-lg p-6">
+            <h2 className="text-lg font-semibold text-green-400 mb-4 flex items-center gap-2">
+              <Globe className="w-5 h-5" />
+              WEBSITE GENERATOR
+            </h2>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-semibold text-green-400 mb-2">WEBSITE DESCRIPTION:</label>
+                <textarea
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  placeholder="Describe the website you want to build (e.g., 'A modern SaaS landing page for a project management tool with pricing section and testimonials')"
+                  className="w-full h-32 bg-gray-800/50 border border-green-500/30 rounded-lg px-4 py-3 text-green-400 placeholder-green-500/50 focus:outline-none focus:border-green-400 resize-none"
+                  disabled={isProcessing}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-green-400 mb-2">TEMPLATE URL (OPTIONAL):</label>
+                <input
+                  type="url"
+                  value={fileUrl}
+                  onChange={(e) => setFileUrl(e.target.value)}
+                  placeholder="https://example.com/template-reference (optional)"
+                  className="w-full bg-gray-800/50 border border-green-500/30 rounded-lg px-4 py-3 text-green-400 placeholder-green-500/50 focus:outline-none focus:border-green-400"
+                  disabled={isProcessing}
+                />
+              </div>
+
+              {/* Style Options Toggle */}
+              <div>
+                <button
+                  type="button"
+                  onClick={() => setShowStyleOptions(!showStyleOptions)}
+                  className="flex items-center gap-2 text-sm font-semibold text-green-400 hover:text-green-300 transition-colors"
+                >
+                  <Palette className="w-4 h-4" />
+                  <span>CUSTOM STYLING OPTIONS</span>
+                  <span className={`transform transition-transform ${showStyleOptions ? "rotate-180" : ""}`}>▼</span>
+                </button>
+              </div>
+
+              {/* Style Options Panel */}
+              {showStyleOptions && (
+                <div className="bg-gray-800/50 border border-green-500/20 rounded-lg p-4 space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Color Scheme */}
+                    <div>
+                      <label className="block text-xs font-semibold text-green-400 mb-2">COLOR SCHEME:</label>
+                      <select
+                        value={stylePreferences.colorScheme}
+                        onChange={(e) =>
+                          setStylePreferences({ ...stylePreferences, colorScheme: e.target.value as any })
+                        }
+                        className="w-full bg-gray-700/50 border border-green-500/30 rounded px-3 py-2 text-green-400 text-sm"
+                      >
+                        <option value="light">Light Theme</option>
+                        <option value="dark">Dark Theme</option>
+                        <option value="custom">Custom Colors</option>
+                      </select>
+                    </div>
+
+                    {/* Layout Style */}
+                    <div>
+                      <label className="block text-xs font-semibold text-green-400 mb-2">LAYOUT STYLE:</label>
+                      <select
+                        value={stylePreferences.layoutStyle}
+                        onChange={(e) =>
+                          setStylePreferences({ ...stylePreferences, layoutStyle: e.target.value as any })
+                        }
+                        className="w-full bg-gray-700/50 border border-green-500/30 rounded px-3 py-2 text-green-400 text-sm"
+                      >
+                        <option value="minimal">Minimal</option>
+                        <option value="modern">Modern</option>
+                        <option value="bold">Bold</option>
+                        <option value="classic">Classic</option>
+                      </select>
+                    </div>
+
+                    {/* Primary Color */}
+                    <div>
+                      <label className="block text-xs font-semibold text-green-400 mb-2">PRIMARY COLOR:</label>
+                      <input
+                        type="text"
+                        value={stylePreferences.primaryColor || ""}
+                        onChange={(e) => setStylePreferences({ ...stylePreferences, primaryColor: e.target.value })}
+                        placeholder="e.g., blue, #3B82F6"
+                        className="w-full bg-gray-700/50 border border-green-500/30 rounded px-3 py-2 text-green-400 text-sm placeholder-green-500/50"
+                      />
+                    </div>
+
+                    {/* Secondary Color */}
+                    <div>
+                      <label className="block text-xs font-semibold text-green-400 mb-2">ACCENT COLOR:</label>
+                      <input
+                        type="text"
+                        value={stylePreferences.secondaryColor || ""}
+                        onChange={(e) => setStylePreferences({ ...stylePreferences, secondaryColor: e.target.value })}
+                        placeholder="e.g., purple, #8B5CF6"
+                        className="w-full bg-gray-700/50 border border-green-500/30 rounded px-3 py-2 text-green-400 text-sm placeholder-green-500/50"
+                      />
+                    </div>
+
+                    {/* Typography */}
+                    <div>
+                      <label className="block text-xs font-semibold text-green-400 mb-2">TYPOGRAPHY:</label>
+                      <select
+                        value={stylePreferences.typography}
+                        onChange={(e) =>
+                          setStylePreferences({ ...stylePreferences, typography: e.target.value as any })
+                        }
+                        className="w-full bg-gray-700/50 border border-green-500/30 rounded px-3 py-2 text-green-400 text-sm"
+                      >
+                        <option value="sans-serif">Sans-serif (Modern)</option>
+                        <option value="serif">Serif (Traditional)</option>
+                        <option value="monospace">Monospace (Technical)</option>
+                      </select>
+                    </div>
+
+                    {/* Border Radius */}
+                    <div>
+                      <label className="block text-xs font-semibold text-green-400 mb-2">BORDER RADIUS:</label>
+                      <select
+                        value={stylePreferences.borderRadius}
+                        onChange={(e) =>
+                          setStylePreferences({ ...stylePreferences, borderRadius: e.target.value as any })
+                        }
+                        className="w-full bg-gray-700/50 border border-green-500/30 rounded px-3 py-2 text-green-400 text-sm"
+                      >
+                        <option value="none">Sharp Corners</option>
+                        <option value="small">Small Rounded</option>
+                        <option value="medium">Medium Rounded</option>
+                        <option value="large">Large Rounded</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Animations Toggle */}
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="animations"
+                      checked={stylePreferences.animations}
+                      onChange={(e) => setStylePreferences({ ...stylePreferences, animations: e.target.checked })}
+                      className="w-4 h-4 text-green-400 bg-gray-700 border-green-500 rounded focus:ring-green-400"
+                    />
+                    <label htmlFor="animations" className="text-xs font-semibold text-green-400">
+                      Include animations and transitions
+                    </label>
+                  </div>
+
+                  {/* Custom Instructions */}
+                  <div>
+                    <label className="block text-xs font-semibold text-green-400 mb-2">
+                      CUSTOM STYLE INSTRUCTIONS:
+                    </label>
+                    <textarea
+                      value={stylePreferences.customInstructions || ""}
+                      onChange={(e) => setStylePreferences({ ...stylePreferences, customInstructions: e.target.value })}
+                      placeholder="Additional styling requirements (e.g., 'Use glassmorphism effects', 'Add subtle shadows')"
+                      className="w-full h-20 bg-gray-700/50 border border-green-500/30 rounded px-3 py-2 text-green-400 text-sm placeholder-green-500/50 resize-none"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-between items-center mt-6">
               <div className="text-xs text-green-500/70">
                 {currentStep && (
                   <div className="flex items-center gap-2">
@@ -177,16 +398,16 @@ export default function MultiAgentPipeline() {
               <button
                 type="submit"
                 disabled={isProcessing || !prompt.trim()}
-                className="bg-green-500/20 hover:bg-green-500/30 border border-green-500/40 hover:border-green-400 text-green-400 px-6 py-2 rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                className="bg-green-500/20 hover:bg-green-500/30 border border-green-500/40 hover:border-green-400 text-green-400 px-8 py-3 rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
                 <Send className="w-4 h-4" />
-                <span>EXECUTE PIPELINE</span>
+                <span>GENERATE WEBSITE</span>
               </button>
             </div>
           </div>
         </form>
 
-        {/* Pipeline Results */}
+        {/* Results */}
         {pipelineResult && (
           <div className="space-y-6">
             {/* Pipeline Summary */}
@@ -194,7 +415,7 @@ export default function MultiAgentPipeline() {
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-semibold text-green-400 flex items-center gap-2">
                   <CheckCircle className="w-5 h-5" />
-                  PIPELINE RESULTS
+                  GENERATION RESULTS
                 </h3>
                 <div className="flex items-center gap-4 text-xs">
                   <span className="text-green-500/70">Request ID: {pipelineResult.requestId}</span>
@@ -204,6 +425,42 @@ export default function MultiAgentPipeline() {
                   <span className="text-green-500/70">{pipelineResult.totalTime}ms</span>
                 </div>
               </div>
+
+              {/* Deployment Status */}
+              {pipelineResult.deploymentUrl && (
+                <div className="mb-4 bg-green-900/20 border border-green-500/30 rounded-lg p-3">
+                  <h4 className="text-sm font-semibold text-green-400 mb-2 flex items-center gap-2">
+                    <ExternalLink className="w-4 h-4" />
+                    LIVE DEPLOYMENT
+                  </h4>
+                  <div className="space-y-1 text-xs">
+                    <div>
+                      <span className="text-green-500">Website URL:</span>{" "}
+                      <a
+                        href={pipelineResult.deploymentUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-400 hover:text-blue-300 underline"
+                      >
+                        {pipelineResult.deploymentUrl}
+                      </a>
+                    </div>
+                    {pipelineResult.githubRepo && (
+                      <div>
+                        <span className="text-green-500">GitHub Repo:</span>{" "}
+                        <a
+                          href={pipelineResult.githubRepo}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-400 hover:text-blue-300 underline"
+                        >
+                          {pipelineResult.githubRepo}
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Error Log */}
               {pipelineResult.errorLog && pipelineResult.errorLog.length > 0 && (
@@ -220,99 +477,72 @@ export default function MultiAgentPipeline() {
                 </div>
               )}
 
-              {/* Iterations */}
-              <div className="space-y-4">
-                <h4 className="text-sm font-semibold text-green-400">PIPELINE ITERATIONS:</h4>
-                {pipelineResult.iterations.map((iteration: PipelineIteration, index) => (
-                  <div key={index} className="bg-gray-800/50 border border-green-500/20 rounded-lg p-4">
-                    <div className="flex items-center justify-between mb-3">
-                      <h5 className="text-sm font-semibold text-green-400 flex items-center gap-2">
-                        <RotateCcw className="w-4 h-4" />
-                        ITERATION {iteration.iterationNumber}
-                      </h5>
-                      <div className="flex items-center gap-2">
-                        <span className={`text-xs font-semibold ${getVerdictColor(iteration.review.verdict)}`}>
-                          {iteration.review.verdict}
-                        </span>
-                        <span className="text-xs text-green-500/70">Score: {iteration.review.qualityScore}/10</span>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                      {/* Generated Code */}
-                      <div className="bg-gray-900/50 border border-blue-500/30 rounded-lg p-3">
-                        <h6 className="text-xs font-semibold text-blue-400 mb-2 flex items-center gap-2">
-                          <Code className="w-3 h-3" />
-                          v0-1.0-md OUTPUT ({iteration.rawCode.metadata?.generationTime}ms)
-                        </h6>
-                        <pre className="text-xs text-blue-300 bg-gray-900/50 p-2 rounded overflow-auto max-h-48">
-                          {iteration.rawCode.code}
-                        </pre>
-                      </div>
-
-                      {/* Review */}
-                      <div className="bg-gray-900/50 border border-purple-500/30 rounded-lg p-3">
-                        <h6 className="text-xs font-semibold text-purple-400 mb-2 flex items-center gap-2">
-                          <Shield className="w-3 h-3" />
-                          GROQ SUPERVISOR REVIEW ({iteration.review.metadata?.reviewTime}ms)
-                        </h6>
-                        <div className="space-y-2 text-xs">
-                          {iteration.review.securityIssues.length > 0 && (
-                            <div>
-                              <span className="text-red-400 font-semibold">Security Issues:</span>
-                              <ul className="text-red-300 ml-2">
-                                {iteration.review.securityIssues.map((issue, i) => (
-                                  <li key={i}>• {issue}</li>
-                                ))}
-                              </ul>
-                            </div>
-                          )}
-                          {iteration.review.performanceIssues.length > 0 && (
-                            <div>
-                              <span className="text-yellow-400 font-semibold">Performance Issues:</span>
-                              <ul className="text-yellow-300 ml-2">
-                                {iteration.review.performanceIssues.map((issue, i) => (
-                                  <li key={i}>• {issue}</li>
-                                ))}
-                              </ul>
-                            </div>
-                          )}
-                          {iteration.review.suggestedFixes && iteration.review.suggestedFixes.length > 0 && (
-                            <div>
-                              <span className="text-green-400 font-semibold">Suggested Fixes:</span>
-                              <ul className="text-green-300 ml-2">
-                                {iteration.review.suggestedFixes.map((fix, i) => (
-                                  <li key={i}>• {fix}</li>
-                                ))}
-                              </ul>
-                            </div>
-                          )}
-                        </div>
-                      </div>
+              {/* Generated Files */}
+              {pipelineResult.codeFiles && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-semibold text-green-400">GENERATED FILES:</h4>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleDeploy}
+                        disabled={isDeploying || !!pipelineResult.deploymentUrl}
+                        className="bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 hover:border-purple-400 text-purple-400 px-4 py-2 rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                      >
+                        <Upload className="w-4 h-4" />
+                        <span>{pipelineResult.deploymentUrl ? "DEPLOYED" : "DEPLOY TO VERCEL"}</span>
+                      </button>
+                      <button
+                        onClick={downloadZip}
+                        className="bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/40 hover:border-blue-400 text-blue-400 px-4 py-2 rounded-lg transition-all duration-200 flex items-center gap-2"
+                      >
+                        <Download className="w-4 h-4" />
+                        <span>DOWNLOAD ZIP</span>
+                      </button>
                     </div>
                   </div>
-                ))}
-              </div>
 
-              {/* Final Code */}
-              {pipelineResult.finalCode && (
-                <div className="mt-4 bg-gray-800/50 border border-green-500/30 rounded-lg p-4">
-                  <h4 className="text-sm font-semibold text-green-400 mb-2">FINAL APPROVED CODE:</h4>
-                  <pre className="text-xs text-green-300 bg-gray-900/50 p-3 rounded overflow-auto max-h-64">
-                    {pipelineResult.finalCode}
-                  </pre>
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                    {/* File List */}
+                    <div className="bg-gray-800/50 border border-green-500/20 rounded-lg p-4">
+                      <h5 className="text-sm font-semibold text-green-400 mb-3">FILE STRUCTURE</h5>
+                      <div className="space-y-2">
+                        {Object.keys(pipelineResult.codeFiles).map((filePath) => (
+                          <button
+                            key={filePath}
+                            onClick={() => setSelectedFile(filePath)}
+                            className={`w-full text-left flex items-center gap-2 p-2 rounded transition-all ${
+                              selectedFile === filePath
+                                ? "bg-green-500/20 border border-green-500/40 text-green-300"
+                                : "bg-gray-700/50 hover:bg-gray-700 text-green-500/70 hover:text-green-400"
+                            }`}
+                          >
+                            {getFileIcon(filePath)}
+                            <span className="text-xs font-mono truncate">{filePath}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* File Content */}
+                    <div className="lg:col-span-2 bg-gray-800/50 border border-green-500/20 rounded-lg p-4">
+                      <h5 className="text-sm font-semibold text-green-400 mb-3">
+                        {selectedFile ? selectedFile : "Select a file to view content"}
+                      </h5>
+                      {selectedFile && pipelineResult.codeFiles[selectedFile] && (
+                        <pre className="text-xs text-green-300 bg-gray-900/50 p-3 rounded overflow-auto max-h-96 whitespace-pre-wrap">
+                          {pipelineResult.codeFiles[selectedFile]}
+                        </pre>
+                      )}
+                      {!selectedFile && (
+                        <div className="text-center py-8 text-green-500/50">
+                          <FileText className="w-8 h-8 mx-auto mb-2" />
+                          <p>Click on a file to view its content</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
               )}
-            </div>
-          </div>
-        )}
-
-        {/* Streaming Response */}
-        {streamingResponse && (
-          <div className="bg-gray-900/50 border border-green-500/30 rounded-lg p-4">
-            <h3 className="text-lg font-semibold text-green-400 mb-4">AGENT OUTPUT</h3>
-            <div className="text-sm text-green-300 bg-gray-800/50 p-3 rounded whitespace-pre-wrap">
-              {streamingResponse}
             </div>
           </div>
         )}
