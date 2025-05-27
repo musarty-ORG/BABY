@@ -69,87 +69,87 @@ export class PipelineOrchestrator {
     queryEmbedding: number[],
     userQuery: string,
   ): Promise<Array<{ text: string; score: number }>> {
-    // Knowledge base with pre-computed embeddings (in production, store in vector DB)
+    // Updated knowledge base for 2025 standards
     const knowledgeBase = [
       {
-        text: `React Best Practices and Patterns:
-- Use functional components with hooks instead of class components
-- Implement proper error boundaries to catch JavaScript errors
-- Follow the single responsibility principle for components
-- Use TypeScript for better type safety and developer experience
-- Implement proper state management with Context API, Zustand, or Redux
-- Use React.memo() for performance optimization of expensive components
-- Implement proper key props for list items
-- Use useCallback and useMemo hooks to prevent unnecessary re-renders
-- Follow consistent naming conventions for components and hooks
-- Implement proper prop validation with TypeScript interfaces`,
-        embedding: [0.1, 0.2, 0.3, 0.4, 0.5], // Mock embedding
-        category: "react",
-        keywords: ["react", "components", "hooks", "typescript", "state", "performance"],
+        text: `Modern Development Patterns 2025:
+- Use React 19+ with concurrent features and automatic batching
+- Implement Server Components and streaming SSR for optimal performance
+- Use TypeScript 5.5+ with latest type inference improvements
+- Leverage Web Components and custom elements for framework-agnostic solutions
+- Implement micro-frontends with Module Federation or single-spa
+- Use Vite 6+ or Turbopack for ultra-fast development builds
+- Adopt CSS Container Queries and modern layout techniques
+- Implement Progressive Web Apps with latest service worker patterns
+- Use WebAssembly for performance-critical computations
+- Leverage Edge Computing and serverless functions at the edge`,
+        embedding: [0.1, 0.2, 0.3, 0.4, 0.5],
+        category: "modern-dev",
+        keywords: ["react", "typescript", "vite", "webassembly", "pwa", "edge", "2025"],
       },
       {
-        text: `Security Guidelines for Web Applications:
-- Always validate and sanitize user inputs on both client and server
-- Use HTTPS for all communications and API calls
-- Implement proper authentication and authorization mechanisms
-- Avoid storing sensitive data in localStorage or sessionStorage
-- Use Content Security Policy (CSP) headers to prevent XSS attacks
-- Implement rate limiting to prevent abuse and DDoS attacks
-- Use secure HTTP headers (HSTS, X-Frame-Options, etc.)
-- Sanitize data before rendering to prevent injection attacks
-- Use environment variables for sensitive configuration
-- Implement proper session management and logout functionality`,
-        embedding: [0.2, 0.3, 0.4, 0.5, 0.6], // Mock embedding
-        category: "security",
-        keywords: ["security", "authentication", "validation", "xss", "csrf", "https"],
+        text: `Security Best Practices 2025:
+- Implement Zero Trust Architecture with continuous verification
+- Use Content Security Policy Level 3 with strict-dynamic
+- Adopt Passkeys and WebAuthn for passwordless authentication
+- Implement Supply Chain Security with SLSA framework
+- Use OWASP Top 10 2025 guidelines for web application security
+- Leverage Security Headers with latest recommendations
+- Implement Runtime Application Self-Protection (RASP)
+- Use AI-powered threat detection and response systems
+- Adopt Privacy-by-Design principles with data minimization
+- Implement Quantum-resistant cryptography preparation`,
+        embedding: [0.2, 0.3, 0.4, 0.5, 0.6],
+        category: "security-2025",
+        keywords: ["security", "zero-trust", "webauthn", "owasp", "quantum", "privacy", "2025"],
       },
       {
-        text: `Performance Optimization Techniques:
-- Implement code splitting and lazy loading for large applications
-- Optimize images using modern formats (WebP, AVIF) and proper sizing
-- Minimize bundle sizes using tree shaking and dead code elimination
-- Use React.memo for expensive components that don't change often
-- Implement proper caching strategies (browser cache, CDN, service workers)
-- Use virtual scrolling for large lists and tables
-- Optimize database queries and implement proper indexing
-- Use compression (gzip, brotli) for static assets
-- Implement proper loading states and skeleton screens
-- Monitor performance with tools like Lighthouse and Web Vitals`,
-        embedding: [0.3, 0.4, 0.5, 0.6, 0.7], // Mock embedding
-        category: "performance",
-        keywords: ["performance", "optimization", "caching", "lazy loading", "bundle", "images"],
+        text: `Performance Optimization 2025:
+- Use Core Web Vitals 2025 metrics (INP, CLS, LCP improvements)
+- Implement Streaming SSR with React 19 concurrent features
+- Leverage HTTP/3 and QUIC protocol optimizations
+- Use Advanced Image Formats (AVIF, WebP, JPEG XL)
+- Implement Predictive Prefetching with ML algorithms
+- Use Service Workers with Background Sync and Push API
+- Leverage WebCodecs API for media processing
+- Implement Virtual DOM alternatives like Solid.js patterns
+- Use Web Streams API for efficient data processing
+- Adopt Edge-Side Includes (ESI) for dynamic content`,
+        embedding: [0.3, 0.4, 0.5, 0.6, 0.7],
+        category: "performance-2025",
+        keywords: ["performance", "web-vitals", "http3", "streaming", "webcodecs", "edge", "2025"],
       },
       {
-        text: `Next.js App Router Best Practices:
-- Use Server Components by default for better performance
-- Implement proper data fetching with async/await in Server Components
-- Use Client Components only when necessary (interactivity, browser APIs)
-- Implement proper error handling with error.tsx files
-- Use loading.tsx files for better user experience
-- Implement proper SEO with metadata API
-- Use route groups for organization without affecting URL structure
-- Implement proper middleware for authentication and redirects
-- Use parallel routes for complex layouts
-- Implement proper caching strategies with revalidation`,
-        embedding: [0.4, 0.5, 0.6, 0.7, 0.8], // Mock embedding
-        category: "nextjs",
-        keywords: ["nextjs", "app router", "server components", "client components", "routing"],
+        text: `Full-Stack Development 2025:
+- Use Next.js 15+ with Turbopack and enhanced App Router
+- Implement tRPC or GraphQL with real-time subscriptions
+- Use Prisma 6+ with edge database support
+- Leverage Serverless databases (PlanetScale, Neon, Supabase)
+- Implement Event-Driven Architecture with message queues
+- Use Docker containers with multi-stage builds
+- Adopt Infrastructure as Code with Terraform or Pulumi
+- Implement CI/CD with GitHub Actions and automated testing
+- Use Monitoring with OpenTelemetry and distributed tracing
+- Leverage AI/ML integration with TensorFlow.js or ONNX`,
+        embedding: [0.4, 0.5, 0.6, 0.7, 0.8],
+        category: "fullstack-2025",
+        keywords: ["nextjs", "trpc", "prisma", "serverless", "docker", "ai", "ml", "2025"],
       },
       {
-        text: `Database Design and API Best Practices:
-- Design normalized database schemas to reduce redundancy
-- Use proper indexing for frequently queried columns
-- Implement database migrations for schema changes
-- Use connection pooling for better performance
-- Implement proper error handling and transaction management
-- Use prepared statements to prevent SQL injection
-- Design RESTful APIs with proper HTTP methods and status codes
-- Implement proper API versioning strategies
-- Use pagination for large datasets
-- Implement proper logging and monitoring for APIs`,
-        embedding: [0.5, 0.6, 0.7, 0.8, 0.9], // Mock embedding
-        category: "database",
-        keywords: ["database", "api", "sql", "rest", "indexing", "migrations"],
+        text: `Multi-Platform Development 2025:
+- Use React Native 0.75+ with New Architecture and Fabric
+- Implement Flutter 3.24+ with Impeller rendering engine
+- Use Tauri 2.0 for lightweight desktop applications
+- Leverage Electron alternatives like Wails or Neutralino
+- Implement Progressive Web Apps with advanced capabilities
+- Use Capacitor for hybrid mobile development
+- Adopt WebAssembly for cross-platform native performance
+- Implement Universal Apps with Expo Router and file-based routing
+- Use Kotlin Multiplatform for shared business logic
+- Leverage .NET MAUI for Microsoft ecosystem integration`,
+        embedding: [0.5, 0.6, 0.7, 0.8, 0.9],
+        category: "multiplatform-2025",
+        keywords: ["react-native", "flutter", "tauri", "electron", "pwa", "webassembly", "kotlin", "2025"],
       },
     ]
 
@@ -208,7 +208,7 @@ export class PipelineOrchestrator {
       .map((doc) => {
         let adjustedScore = doc.score
 
-        // Boost score for specific contexts
+        // Boost score for specific contexts in 2025
         if (queryLower.includes("react") && doc.text.toLowerCase().includes("react")) {
           adjustedScore += 0.2
         }
@@ -218,7 +218,10 @@ export class PipelineOrchestrator {
         if (queryLower.includes("performance") && doc.text.toLowerCase().includes("performance")) {
           adjustedScore += 0.2
         }
-        if (queryLower.includes("database") && doc.text.toLowerCase().includes("database")) {
+        if (queryLower.includes("ai") || queryLower.includes("ml")) {
+          adjustedScore += 0.2
+        }
+        if (queryLower.includes("mobile") || queryLower.includes("native")) {
           adjustedScore += 0.2
         }
 
@@ -231,18 +234,18 @@ export class PipelineOrchestrator {
   private fallbackKeywordSearch(userQuery: string): Array<{ text: string }> {
     const fallbackDocs = [
       {
-        text: `General Development Best Practices:
-- Write clean, readable, and maintainable code
-- Follow established coding standards and conventions
-- Implement proper error handling and logging
+        text: `Universal Development Best Practices 2025:
+- Write clean, readable, and maintainable code across all platforms
+- Follow established coding standards and conventions for each technology
+- Implement proper error handling and comprehensive logging
 - Use version control effectively with meaningful commit messages
-- Write comprehensive tests for your code
-- Document your code and APIs properly
+- Write comprehensive tests for your code (unit, integration, e2e)
+- Document your code and APIs properly with modern tools
 - Follow the DRY (Don't Repeat Yourself) principle
-- Implement proper separation of concerns
-- Use meaningful variable and function names
-- Regularly refactor and optimize your code`,
-        keywords: ["development", "best practices", "clean code", "testing"],
+- Implement proper separation of concerns and modular architecture
+- Use meaningful variable and function names with clear intent
+- Regularly refactor and optimize your code for 2025 standards`,
+        keywords: ["development", "best practices", "clean code", "testing", "2025"],
       },
     ]
 
@@ -258,7 +261,7 @@ export class PipelineOrchestrator {
 
   private async searchRealTimeKnowledge(query: string, codeContext?: string): Promise<string> {
     try {
-      // Create search queries based on the request
+      // Create search queries based on the request with 2025 context
       const searchQueries = this.generateSearchQueries(query, codeContext)
 
       const searchResults = await Promise.all(
@@ -276,6 +279,20 @@ export class PipelineOrchestrator {
                 "tailwindcss.com",
                 "typescript-eslint.io",
                 "developer.mozilla.org",
+                "vuejs.org",
+                "angular.dev",
+                "svelte.dev",
+                "solidjs.com",
+                "flutter.dev",
+                "reactnative.dev",
+                "tauri.app",
+                "electronjs.org",
+                "rust-lang.org",
+                "go.dev",
+                "python.org",
+                "nodejs.org",
+                "deno.land",
+                "bun.sh",
               ],
             })
             return result
@@ -290,7 +307,7 @@ export class PipelineOrchestrator {
       const validResults = searchResults.filter((result) => result !== null)
       if (validResults.length === 0) return ""
 
-      let knowledgeContext = "\n\n=== REAL-TIME KNOWLEDGE ===\n"
+      let knowledgeContext = "\n\n=== REAL-TIME KNOWLEDGE (May 2025) ===\n"
 
       validResults.forEach((result, index) => {
         if (result.answer) {
@@ -314,36 +331,191 @@ export class PipelineOrchestrator {
   private generateSearchQueries(userQuery: string, codeContext?: string): string[] {
     const queries = []
 
-    // Base query
-    queries.push(userQuery)
+    // Base query with 2025 context
+    queries.push(`${userQuery} 2025 best practices`)
 
-    // Technology-specific queries
+    // Technology-specific queries for 2025
     if (userQuery.toLowerCase().includes("react") || userQuery.toLowerCase().includes("component")) {
-      queries.push(`modern React components ${userQuery} 2024`)
-      queries.push(`React best practices ${userQuery}`)
+      queries.push(`React 19 ${userQuery} 2025 patterns`)
+      queries.push(`modern React components ${userQuery} May 2025`)
+    }
+
+    if (userQuery.toLowerCase().includes("vue")) {
+      queries.push(`Vue 3.4 ${userQuery} 2025 composition API`)
+    }
+
+    if (userQuery.toLowerCase().includes("angular")) {
+      queries.push(`Angular 18 ${userQuery} 2025 standalone components`)
+    }
+
+    if (userQuery.toLowerCase().includes("svelte")) {
+      queries.push(`Svelte 5 ${userQuery} 2025 runes`)
+    }
+
+    if (userQuery.toLowerCase().includes("solid")) {
+      queries.push(`SolidJS ${userQuery} 2025 fine-grained reactivity`)
     }
 
     if (userQuery.toLowerCase().includes("next") || userQuery.toLowerCase().includes("website")) {
-      queries.push(`Next.js 14 ${userQuery} examples`)
-      queries.push(`Next.js app router ${userQuery}`)
+      queries.push(`Next.js 15 ${userQuery} 2025 Turbopack`)
+      queries.push(`Next.js app router ${userQuery} May 2025`)
     }
 
-    if (userQuery.toLowerCase().includes("tailwind") || userQuery.toLowerCase().includes("css")) {
-      queries.push(`Tailwind CSS ${userQuery} examples`)
-      queries.push(`modern CSS ${userQuery} 2024`)
+    if (userQuery.toLowerCase().includes("flutter")) {
+      queries.push(`Flutter 3.24 ${userQuery} 2025 Impeller`)
     }
 
-    // GitHub and code examples
-    queries.push(`GitHub ${userQuery} examples`)
-    queries.push(`${userQuery} code examples 2024`)
+    if (userQuery.toLowerCase().includes("react native")) {
+      queries.push(`React Native 0.75 ${userQuery} 2025 New Architecture`)
+    }
+
+    if (userQuery.toLowerCase().includes("tauri")) {
+      queries.push(`Tauri 2.0 ${userQuery} 2025 desktop apps`)
+    }
+
+    if (userQuery.toLowerCase().includes("rust")) {
+      queries.push(`Rust ${userQuery} 2025 latest features`)
+    }
+
+    if (userQuery.toLowerCase().includes("go") || userQuery.toLowerCase().includes("golang")) {
+      queries.push(`Go ${userQuery} 2025 generics patterns`)
+    }
+
+    if (userQuery.toLowerCase().includes("python")) {
+      queries.push(`Python 3.13 ${userQuery} 2025 performance`)
+    }
+
+    if (userQuery.toLowerCase().includes("node") || userQuery.toLowerCase().includes("javascript")) {
+      queries.push(`Node.js 22 ${userQuery} 2025 ESM`)
+    }
+
+    if (userQuery.toLowerCase().includes("deno")) {
+      queries.push(`Deno 2.0 ${userQuery} 2025 npm compatibility`)
+    }
+
+    if (userQuery.toLowerCase().includes("bun")) {
+      queries.push(`Bun ${userQuery} 2025 runtime performance`)
+    }
+
+    // GitHub and code examples with 2025 context
+    queries.push(`GitHub ${userQuery} examples 2025`)
+    queries.push(`${userQuery} code examples May 2025`)
 
     // If we have code context, search for improvements
     if (codeContext) {
-      queries.push(`improve ${userQuery} performance`)
-      queries.push(`${userQuery} security best practices`)
+      queries.push(`improve ${userQuery} performance 2025`)
+      queries.push(`${userQuery} security best practices 2025`)
     }
 
     return queries.slice(0, 4) // Limit to 4 queries to avoid rate limits
+  }
+
+  private detectProjectType(prompt: string): string {
+    const promptLower = prompt.toLowerCase()
+
+    // Web frameworks
+    if (promptLower.includes("react") || promptLower.includes("jsx")) return "react"
+    if (promptLower.includes("vue")) return "vue"
+    if (promptLower.includes("angular")) return "angular"
+    if (promptLower.includes("svelte")) return "svelte"
+    if (promptLower.includes("solid")) return "solid"
+    if (promptLower.includes("next")) return "nextjs"
+    if (promptLower.includes("nuxt")) return "nuxt"
+    if (promptLower.includes("astro")) return "astro"
+    if (promptLower.includes("remix")) return "remix"
+
+    // Mobile frameworks
+    if (promptLower.includes("flutter")) return "flutter"
+    if (promptLower.includes("react native")) return "react-native"
+    if (promptLower.includes("ionic")) return "ionic"
+    if (promptLower.includes("capacitor")) return "capacitor"
+
+    // Desktop frameworks
+    if (promptLower.includes("tauri")) return "tauri"
+    if (promptLower.includes("electron")) return "electron"
+    if (promptLower.includes("wails")) return "wails"
+
+    // Backend frameworks
+    if (promptLower.includes("express")) return "express"
+    if (promptLower.includes("fastify")) return "fastify"
+    if (promptLower.includes("nest")) return "nestjs"
+    if (promptLower.includes("django")) return "django"
+    if (promptLower.includes("flask")) return "flask"
+    if (promptLower.includes("fastapi")) return "fastapi"
+    if (promptLower.includes("spring")) return "spring"
+    if (promptLower.includes("gin") || promptLower.includes("fiber")) return "go"
+    if (promptLower.includes("actix") || promptLower.includes("axum")) return "rust"
+
+    // Languages
+    if (promptLower.includes("python")) return "python"
+    if (promptLower.includes("rust")) return "rust"
+    if (promptLower.includes("go") || promptLower.includes("golang")) return "go"
+    if (promptLower.includes("java")) return "java"
+    if (promptLower.includes("c#") || promptLower.includes("csharp")) return "csharp"
+    if (promptLower.includes("php")) return "php"
+    if (promptLower.includes("ruby")) return "ruby"
+
+    // Default to web if website/landing page mentioned
+    if (promptLower.includes("website") || promptLower.includes("landing")) return "nextjs"
+
+    return "generic"
+  }
+
+  private generateProjectStructure(projectType: string, prompt: string): Record<string, string> {
+    const structures: Record<string, () => Record<string, string>> = {
+      react: () => ({
+        "src/App.tsx": `import React from 'react';\nimport './App.css';\n\nfunction App() {\n  return (\n    <div className="App">\n      <h1>React App</h1>\n    </div>\n  );\n}\n\nexport default App;`,
+        "src/index.tsx": `import React from 'react';\nimport ReactDOM from 'react-dom/client';\nimport App from './App';\n\nconst root = ReactDOM.createRoot(document.getElementById('root')!);\nroot.render(<App />);`,
+        "package.json": JSON.stringify(
+          {
+            name: "react-app",
+            version: "0.1.0",
+            dependencies: { react: "^19.0.0", "react-dom": "^19.0.0" },
+            devDependencies: { "@types/react": "^19.0.0", typescript: "^5.5.0", vite: "^6.0.0" },
+          },
+          null,
+          2,
+        ),
+      }),
+
+      vue: () => ({
+        "src/App.vue": `<template>\n  <div id="app">\n    <h1>Vue App</h1>\n  </div>\n</template>\n\n<script setup lang="ts">\n// Vue 3.4+ Composition API\n</script>`,
+        "src/main.ts": `import { createApp } from 'vue';\nimport App from './App.vue';\n\ncreateApp(App).mount('#app');`,
+        "package.json": JSON.stringify(
+          {
+            name: "vue-app",
+            version: "0.1.0",
+            dependencies: { vue: "^3.4.0" },
+            devDependencies: { "@vitejs/plugin-vue": "^5.0.0", typescript: "^5.5.0", vite: "^6.0.0" },
+          },
+          null,
+          2,
+        ),
+      }),
+
+      flutter: () => ({
+        "lib/main.dart": `import 'package:flutter/material.dart';\n\nvoid main() {\n  runApp(MyApp());\n}\n\nclass MyApp extends StatelessWidget {\n  @override\n  Widget build(BuildContext context) {\n    return MaterialApp(\n      title: 'Flutter App',\n      home: Scaffold(\n        appBar: AppBar(title: Text('Flutter App')),\n        body: Center(child: Text('Hello Flutter!')),\n      ),\n    );\n  }\n}`,
+        "pubspec.yaml": `name: flutter_app\nversion: 1.0.0+1\nenvironment:\n  sdk: '>=3.4.0 <4.0.0'\n  flutter: ">=3.24.0"\ndependencies:\n  flutter:\n    sdk: flutter\ndev_dependencies:\n  flutter_test:\n    sdk: flutter`,
+      }),
+
+      python: () => ({
+        "main.py": `#!/usr/bin/env python3\n"""Main application module."""\n\ndef main():\n    \"\"\"Main function.\"\"\"\n    print("Hello, Python!")\n\nif __name__ == "__main__":\n    main()`,
+        "requirements.txt": "# Add your dependencies here\n",
+        "pyproject.toml": `[build-system]\nrequires = ["setuptools>=61.0"]\nbuild-backend = "setuptools.build_meta"\n\n[project]\nname = "python-app"\nversion = "0.1.0"\ndescription = "A Python application"\nrequires-python = ">=3.11"`,
+      }),
+
+      rust: () => ({
+        "src/main.rs": `fn main() {\n    println!("Hello, Rust!");\n}`,
+        "Cargo.toml": `[package]\nname = "rust-app"\nversion = "0.1.0"\nedition = "2021"\n\n[dependencies]`,
+      }),
+
+      go: () => ({
+        "main.go": `package main\n\nimport "fmt"\n\nfunc main() {\n    fmt.Println("Hello, Go!")\n}`,
+        "go.mod": `module go-app\n\ngo 1.22\n`,
+      }),
+    }
+
+    return structures[projectType]?.() || structures.react()
   }
 
   private buildStyleInstructions(stylePreferences?: StylePreferences): string {
@@ -549,9 +721,11 @@ export class PipelineOrchestrator {
         }
       }
 
-      // Handle codegen mode - skip E2B execution and parse JSON
+      // Handle codegen mode - detect project type and parse accordingly
       if (request.mode === "codegen" && currentCode) {
-        // Use the new safe JSON parser
+        const projectType = this.detectProjectType(request.prompt)
+
+        // Try to parse as JSON first (for web projects)
         const parsedFiles = this.parseJsonSafely(currentCode)
 
         if (parsedFiles) {
@@ -559,75 +733,48 @@ export class PipelineOrchestrator {
           await pipelineLogger.logStage(
             request.requestId,
             "CODEGEN_PARSE_SUCCESS",
-            { fileCount: Object.keys(codeFiles).length },
+            { fileCount: Object.keys(codeFiles).length, projectType },
             null,
             0,
           )
         } else {
+          // If JSON parsing fails, create appropriate project structure
           await pipelineLogger.logError(
             request.requestId,
             "ORCHESTRATION",
-            `All JSON parsing attempts failed for: ${currentCode.substring(0, 200)}...`,
+            `JSON parsing failed, creating ${projectType} project structure`,
             true,
           )
 
-          // Final fallback - create minimal structure with the raw content
+          const baseStructure = this.generateProjectStructure(projectType, request.prompt)
+
+          // Add the generated code to the main file
+          const mainFile = Object.keys(baseStructure)[0]
+          baseStructure[mainFile] = currentCode
+
           codeFiles = {
-            "app/page.tsx": `// Generated content could not be parsed properly
-// Raw AI output:
-/*
-${currentCode}
-*/
+            ...baseStructure,
+            "README.md": `# Generated ${projectType.toUpperCase()} Project
 
-import React from 'react';
+Generated on: ${new Date().toLocaleDateString("en-US", {
+              year: "numeric",
+              month: "long",
+              day: "numeric",
+            })}
 
-export default function HomePage() {
-  return (
-    <div className="min-h-screen bg-gray-900 text-white p-8">
-      <h1 className="text-4xl font-bold mb-4">Generated Website</h1>
-      <p className="text-gray-400">
-        The AI generated content but it could not be parsed properly. 
-        Please check the raw output in the comments above.
-      </p>
-    </div>
-  );
-}`,
-            "package.json": JSON.stringify(
-              {
-                name: "generated-website",
-                version: "0.1.0",
-                private: true,
-                scripts: {
-                  dev: "next dev",
-                  build: "next build",
-                  start: "next start",
-                  lint: "next lint",
-                },
-                dependencies: {
-                  next: "14.0.0",
-                  react: "^18.0.0",
-                  "react-dom": "^18.0.0",
-                },
-                devDependencies: {
-                  "@types/node": "^20.0.0",
-                  "@types/react": "^18.0.0",
-                  "@types/react-dom": "^18.0.0",
-                  typescript: "^5.0.0",
-                  tailwindcss: "^3.0.0",
-                  postcss: "^8.0.0",
-                  autoprefixer: "^10.0.0",
-                },
-              },
-              null,
-              2,
-            ),
-            "README.md": `# Generated Website
+## Original Request
+${request.prompt}
 
-The AI generated content but JSON parsing failed. Raw output:
+## Project Type
+${projectType}
 
-\`\`\`
-${currentCode}
-\`\`\`
+## Generated Code
+The main code has been placed in ${mainFile}
+
+## Setup Instructions
+${this.getSetupInstructions(projectType)}
+
+Generated by NEXUS AI Pipeline v2.0 (May 2025)
 `,
           }
         }
@@ -654,6 +801,21 @@ ${currentCode}
     return result
   }
 
+  private getSetupInstructions(projectType: string): string {
+    const instructions: Record<string, string> = {
+      react: "1. Run `npm install`\n2. Run `npm run dev`\n3. Open http://localhost:5173",
+      vue: "1. Run `npm install`\n2. Run `npm run dev`\n3. Open http://localhost:5173",
+      nextjs: "1. Run `npm install`\n2. Run `npm run dev`\n3. Open http://localhost:3000",
+      flutter: "1. Run `flutter pub get`\n2. Run `flutter run`\n3. Choose your target device",
+      python:
+        "1. Create virtual environment: `python -m venv venv`\n2. Activate: `source venv/bin/activate`\n3. Install deps: `pip install -r requirements.txt`\n4. Run: `python main.py`",
+      rust: "1. Run `cargo build`\n2. Run `cargo run`",
+      go: "1. Run `go mod tidy`\n2. Run `go run main.go`",
+    }
+
+    return instructions[projectType] || "Follow the standard setup process for this project type."
+  }
+
   private async generateCode(request: PipelineRequest, previousCode?: string): Promise<RawCode> {
     const startTime = Date.now()
 
@@ -673,8 +835,11 @@ ${previousCode}
 Generate improved code that addresses the feedback.`
       }
 
-      // Get real-time knowledge
+      // Get real-time knowledge with 2025 context
       const realTimeKnowledge = await this.searchRealTimeKnowledge(enhancedPrompt, previousCode)
+
+      // Detect project type for appropriate generation
+      const projectType = this.detectProjectType(enhancedPrompt)
 
       let codeGenPrompt: string
 
@@ -682,65 +847,73 @@ Generate improved code that addresses the feedback.`
         // Build style instructions
         const styleInstructions = this.buildStyleInstructions(request.stylePreferences)
 
-        // Special codegen mode for website building with real-time knowledge
-        codeGenPrompt = `You are v0-1.0-md, a legendary website-builder with access to real-time knowledge.
+        // Special codegen mode for any project type with real-time knowledge
+        codeGenPrompt = `You are v0-1.0-md, a legendary multi-platform developer with access to real-time knowledge from May 2025.
 
 ${realTimeKnowledge}
 
-Generate a complete Next.js + Tailwind landing page for: "${enhancedPrompt}"${styleInstructions}
+Generate a complete ${projectType} project for: "${enhancedPrompt}"${styleInstructions}
+
+Project Type Detected: ${projectType}
 
 Use the real-time knowledge above to:
-- Implement modern, up-to-date components and patterns
-- Follow current best practices from 2024
-- Use the latest Next.js 14+ features
-- Incorporate modern design trends
-- Apply security and performance optimizations
+- Implement modern, up-to-date patterns for ${projectType} in 2025
+- Follow current best practices from May 2025
+- Use the latest framework features and optimizations
+- Incorporate modern design trends and performance optimizations
+- Apply security and accessibility standards from 2025
 
 CRITICAL: Output ONLY valid JSON without any markdown formatting, explanations, or escaped quotes.
 
-Expected format (no backticks, no markdown, no escaped quotes):
+For web projects (React/Next.js/Vue/etc), use this format:
 {
-  "app/page.tsx": "import React from 'react';\\n\\nexport default function HomePage() {\\n  return (\\n    <div className=\\"min-h-screen bg-white\\">\\n      <h1>Your content here</h1>\\n    </div>\\n  );\\n}",
-  "app/layout.tsx": "import './globals.css';\\n\\nexport default function RootLayout({ children }: { children: React.ReactNode }) {\\n  return (\\n    <html lang=\\"en\\">\\n      <body>{children}</body>\\n    </html>\\n  );\\n}",
-  "app/globals.css": "@tailwind base;\\n@tailwind components;\\n@tailwind utilities;",
-  "components/Header.tsx": "export default function Header() { return <header>Header</header>; }",
-  "components/Hero.tsx": "export default function Hero() { return <section>Hero</section>; }",
-  "components/Features.tsx": "export default function Features() { return <section>Features</section>; }",
-  "components/Footer.tsx": "export default function Footer() { return <footer>Footer</footer>; }",
-  "package.json": "{\\n  \\"name\\": \\"generated-website\\",\\n  \\"version\\": \\"0.1.0\\",\\n  \\"private\\": true,\\n  \\"scripts\\": {\\n    \\"dev\\": \\"next dev\\",\\n    \\"build\\": \\"next build\\",\\n    \\"start\\": \\"next start\\",\\n    \\"lint\\": \\"next lint\\"\\n  },\\n  \\"dependencies\\": {\\n    \\"next\\": \\"14.0.0\\",\\n    \\"react\\": \\"^18.0.0\\",\\n    \\"react-dom\\": \\"^18.0.0\\"\\n  },\\n  \\"devDependencies\\": {\\n    \\"@types/node\\": \\"^20.0.0\\",\\n    \\"@types/react\\": \\"^18.0.0\\",\\n    \\"@types/react-dom\\": \\"^18.0.0\\",\\n    \\"typescript\\": \\"^5.0.0\\",\\n    \\"tailwindcss\\": \\"^3.0.0\\",\\n    \\"postcss\\": \\"^8.0.0\\",\\n    \\"autoprefixer\\": \\"^10.0.0\\"\\n  }\\n}",
-  "tailwind.config.js": "module.exports = {\\n  content: ['./app/**/*.{js,ts,jsx,tsx}', './components/**/*.{js,ts,jsx,tsx}'],\\n  theme: { extend: {} },\\n  plugins: []\\n}",
-  "next.config.js": "module.exports = { experimental: { appDir: true } }"
+  "src/main.ext": "code here",
+  "package.json": "package config",
+  "README.md": "setup instructions"
 }
 
-Requirements:
-- Use modern React with TypeScript
-- Use Tailwind CSS for styling
-- Create responsive design
-- Include proper SEO meta tags
-- Use Next.js 13+ App Router
-- Include proper component structure
-- Add proper TypeScript types
-- Make it production-ready
-- Follow the style requirements exactly
-- Implement patterns from the real-time knowledge above
+For mobile projects (Flutter/React Native), use:
+{
+  "lib/main.dart": "Flutter code" OR "src/App.tsx": "React Native code",
+  "pubspec.yaml": "Flutter config" OR "package.json": "RN config"
+}
 
-IMPORTANT: Return ONLY the JSON object. No explanations, no markdown, no code blocks, no escaped quotes in the JSON keys or structure.`
+For desktop projects (Tauri/Electron), use:
+{
+  "src/main.rs": "Rust code" OR "src/main.ts": "Electron code",
+  "Cargo.toml": "Rust config" OR "package.json": "Electron config"
+}
+
+For backend projects, use appropriate structure for the language/framework.
+
+Requirements:
+- Use modern ${projectType} patterns from 2025
+- Follow current best practices and security standards
+- Create production-ready, scalable code
+- Include proper error handling and logging
+- Implement responsive design (for UI projects)
+- Add comprehensive documentation
+- Follow the style requirements exactly
+- Use patterns from the real-time knowledge above
+
+IMPORTANT: Return ONLY the JSON object. No explanations, no markdown, no code blocks.`
       } else {
         // Standard mode with document retrieval + real-time search
         const docs = await this.retrieveRelevantDocs(enhancedPrompt)
         const contextualPrompt = `${docs.map((d) => d.text).join("\n\n")}${realTimeKnowledge}\n\nUser: ${enhancedPrompt}`
 
-        codeGenPrompt = `You are v0-1.0-md, a specialized code generation model with access to real-time knowledge.
+        codeGenPrompt = `You are v0-1.0-md, a specialized code generation model with access to real-time knowledge from May 2025.
 
 ${contextualPrompt}
 
 Focus on:
-- Clean, readable code using modern patterns from the real-time knowledge
-- Best practices from both the provided context and current 2024 standards
-- Proper structure following latest conventions
+- Clean, readable code using modern ${projectType} patterns from 2025
+- Best practices from both the provided context and current May 2025 standards
+- Proper structure following latest conventions for ${projectType}
 - Working functionality with modern approaches
-- Security considerations from current best practices
+- Security considerations from current 2025 best practices
 - Performance optimizations using latest techniques
+- Accessibility and inclusive design principles
 
 Generate ONLY the code, no explanations:`
       }
@@ -751,6 +924,7 @@ Generate ONLY the code, no explanations:`
         {
           prompt: enhancedPrompt,
           mode: request.mode,
+          projectType,
           promptLength: codeGenPrompt.length,
           stylePreferences: request.stylePreferences,
           hasRealTimeKnowledge: realTimeKnowledge.length > 0,
@@ -763,8 +937,7 @@ Generate ONLY the code, no explanations:`
         generateText({
           model: groq("meta-llama/llama-4-scout-17b-16e-instruct"),
           prompt: codeGenPrompt,
-          system:
-            "You are v0-1.0-md, a code generation specialist with access to real-time knowledge. Use modern patterns and current best practices. Output only clean, functional code.",
+          system: `You are v0-1.0-md, a multi-platform code generation specialist with access to real-time knowledge from May 2025. You can generate code for any technology stack including React, Vue, Angular, Svelte, Flutter, React Native, Tauri, Electron, Python, Rust, Go, and more. Use modern patterns and current best practices. Output only clean, functional code.`,
         }),
         new Promise((_, reject) =>
           setTimeout(() => reject(new Error("Code generation timeout")), this.GENERATION_TIMEOUT),
@@ -781,6 +954,7 @@ Generate ONLY the code, no explanations:`
           generationTime,
           tokenCount: (result as any).usage?.totalTokens,
           realTimeKnowledgeUsed: realTimeKnowledge.length > 0,
+          projectType,
         },
         timestamp: new Date().toISOString(),
       }
@@ -798,12 +972,15 @@ Generate ONLY the code, no explanations:`
     const startTime = Date.now()
 
     try {
+      const projectType = rawCode.metadata?.projectType || this.detectProjectType(rawCode.prompt)
+
       let reviewPrompt: string
 
       if (request.mode === "codegen") {
-        reviewPrompt = `You are the Groq Supervisor, an expert code reviewer for website projects. Review this JSON code structure generated by v0-1.0-md:
+        reviewPrompt = `You are the Groq Supervisor, an expert code reviewer for ${projectType} projects. Review this code structure generated by v0-1.0-md:
 
 ORIGINAL REQUEST: ${rawCode.prompt}
+PROJECT TYPE: ${projectType}
 
 CODE TO REVIEW:
 \`\`\`
@@ -811,29 +988,30 @@ ${rawCode.code}
 \`\`\`
 
 Check for:
-- Valid JSON structure
-- Complete file set for a Next.js project
-- Proper TypeScript syntax
-- Tailwind CSS usage
-- Responsive design patterns
-- SEO best practices
-- Component structure
-- Style requirements compliance
+- Valid project structure for ${projectType}
+- Modern ${projectType} patterns and best practices from 2025
+- Proper syntax and conventions
+- Security considerations
+- Performance optimizations
+- Accessibility standards (for UI projects)
+- Error handling and logging
+- Documentation quality
 
 Provide a structured review in this EXACT format:
 
 QUALITY_SCORE: [1-10]
 SECURITY_ISSUES: [list any security concerns, or "NONE"]
 PERFORMANCE_ISSUES: [list any performance concerns, or "NONE"]
-REVIEW_NOTES: [detailed feedback on the website structure and code quality]
+REVIEW_NOTES: [detailed feedback on the project structure and code quality]
 SUGGESTED_FIXES: [specific improvements, or "NONE"]
 VERDICT: [APPROVE/REJECT/NEEDS_REVISION]
 
 Be thorough but constructive in your review.`
       } else {
-        reviewPrompt = `You are the Groq Supervisor, an expert code reviewer and mentor. Review this code generated by v0-1.0-md:
+        reviewPrompt = `You are the Groq Supervisor, an expert code reviewer and mentor for ${projectType}. Review this code generated by v0-1.0-md:
 
 ORIGINAL REQUEST: ${rawCode.prompt}
+PROJECT TYPE: ${projectType}
 
 CODE TO REVIEW:
 \`\`\`
@@ -852,13 +1030,13 @@ VERDICT: [APPROVE/REJECT/NEEDS_REVISION]
 Be thorough but constructive in your review.`
       }
 
-      await pipelineLogger.logStage(request.requestId, "REVIEW_START", { code: rawCode.code }, null, 0)
+      await pipelineLogger.logStage(request.requestId, "REVIEW_START", { code: rawCode.code, projectType }, null, 0)
 
       const result = await Promise.race([
         generateText({
           model: groq("meta-llama/llama-4-maverick-17b-128e-instruct"),
           prompt: reviewPrompt,
-          system: "You are the Groq Supervisor - a senior code reviewer. Provide structured, actionable code reviews.",
+          system: `You are the Groq Supervisor - a senior code reviewer with expertise in all major programming languages and frameworks as of May 2025. Provide structured, actionable code reviews.`,
         }),
         new Promise((_, reject) => setTimeout(() => reject(new Error("Review timeout")), this.REVIEW_TIMEOUT)),
       ])
@@ -882,6 +1060,7 @@ Be thorough but constructive in your review.`
         metadata: {
           reviewer: "meta-llama/llama-4-maverick-17b-128e-instruct",
           reviewTime,
+          projectType,
         },
         timestamp: new Date().toISOString(),
       }
