@@ -4,6 +4,7 @@ import { pipelineLogger } from "@/lib/pipeline-logger"
 import type { PipelineRequest } from "@/types/pipeline"
 import { groq } from "@ai-sdk/groq"
 import { streamText } from "ai"
+import { searchEngine } from "@/lib/search-engine"
 
 export const maxDuration = 60
 
@@ -68,22 +69,69 @@ export async function POST(req: NextRequest) {
 
 async function handleCodeGeneration(request: PipelineRequest) {
   try {
-    const codeGenPrompt = `You are v0-1.0-md, a specialized code generation model. Generate clean, functional code based on this request:
+    // Get real-time knowledge for code generation
+    let realTimeKnowledge = ""
+    try {
+      const searchResult = await searchEngine.search(request.prompt, {
+        includeAnswer: true,
+        maxResults: 3,
+        searchDepth: "advanced",
+        includeDomains: [
+          "github.com",
+          "stackoverflow.com",
+          "nextjs.org",
+          "react.dev",
+          "tailwindcss.com",
+          "developer.mozilla.org",
+        ],
+      })
+
+      if (searchResult.answer || searchResult.results.length > 0) {
+        realTimeKnowledge = `\n\n=== REAL-TIME KNOWLEDGE ===\n`
+
+        if (searchResult.answer) {
+          realTimeKnowledge += `CURRENT BEST PRACTICES: ${searchResult.answer}\n\n`
+        }
+
+        realTimeKnowledge += `MODERN EXAMPLES:\n`
+        searchResult.results.slice(0, 2).forEach((result, index) => {
+          realTimeKnowledge += `${index + 1}. ${result.title}\n   ${result.content.substring(0, 200)}...\n\n`
+        })
+
+        realTimeKnowledge += `=== END REAL-TIME KNOWLEDGE ===\n\n`
+      }
+    } catch (searchError) {
+      console.warn("Real-time search failed:", searchError)
+    }
+
+    const codeGenPrompt = `You are v0-1.0-md, a specialized code generation model with real-time knowledge access.
+
+${realTimeKnowledge}
+
+Generate clean, functional code based on this request:
 
 ${request.prompt}
 
+Use the real-time knowledge above to implement:
+- Modern patterns and practices from 2024
+- Latest framework features and best practices
+- Current security and performance optimizations
+- Up-to-date component patterns
+
 Focus on:
-- Clean, readable code
-- Best practices
-- Proper structure
-- Working functionality
+- Clean, readable code using current standards
+- Best practices from real-time knowledge
+- Proper structure following latest conventions
+- Working functionality with modern approaches
+- Security considerations from current practices
 
 Generate the code without explanations, just the code:`
 
     const result = streamText({
       model: groq("meta-llama/llama-4-scout-17b-16e-instruct"),
       prompt: codeGenPrompt,
-      system: "You are v0-1.0-md, a code generation specialist. Output only clean, functional code.",
+      system:
+        "You are v0-1.0-md, a code generation specialist with real-time knowledge access. Use modern patterns and current best practices. Output only clean, functional code.",
     })
 
     return result.toDataStreamResponse()

@@ -9,6 +9,7 @@ import type {
   StylePreferences,
 } from "@/types/pipeline"
 import { pipelineLogger } from "./pipeline-logger"
+import { searchEngine } from "./search-engine"
 
 export class PipelineOrchestrator {
   private readonly MAX_RETRIES = 3
@@ -253,6 +254,96 @@ export class PipelineOrchestrator {
     )
 
     return relevantDocs.length > 0 ? relevantDocs : fallbackDocs
+  }
+
+  private async searchRealTimeKnowledge(query: string, codeContext?: string): Promise<string> {
+    try {
+      // Create search queries based on the request
+      const searchQueries = this.generateSearchQueries(query, codeContext)
+
+      const searchResults = await Promise.all(
+        searchQueries.map(async (searchQuery) => {
+          try {
+            const result = await searchEngine.search(searchQuery, {
+              includeAnswer: true,
+              maxResults: 5,
+              searchDepth: "advanced",
+              includeDomains: [
+                "github.com",
+                "stackoverflow.com",
+                "nextjs.org",
+                "react.dev",
+                "tailwindcss.com",
+                "typescript-eslint.io",
+                "developer.mozilla.org",
+              ],
+            })
+            return result
+          } catch (error) {
+            console.warn(`Search failed for query: ${searchQuery}`, error)
+            return null
+          }
+        }),
+      )
+
+      // Combine and format search results
+      const validResults = searchResults.filter((result) => result !== null)
+      if (validResults.length === 0) return ""
+
+      let knowledgeContext = "\n\n=== REAL-TIME KNOWLEDGE ===\n"
+
+      validResults.forEach((result, index) => {
+        if (result.answer) {
+          knowledgeContext += `\nSEARCH ANSWER ${index + 1}: ${result.answer}\n`
+        }
+
+        knowledgeContext += `\nRELEVANT RESOURCES ${index + 1}:\n`
+        result.results.slice(0, 3).forEach((item, itemIndex) => {
+          knowledgeContext += `${itemIndex + 1}. ${item.title}\n   ${item.content.substring(0, 200)}...\n   Source: ${item.url}\n\n`
+        })
+      })
+
+      knowledgeContext += "=== END REAL-TIME KNOWLEDGE ===\n\n"
+      return knowledgeContext
+    } catch (error) {
+      console.error("Real-time knowledge search failed:", error)
+      return ""
+    }
+  }
+
+  private generateSearchQueries(userQuery: string, codeContext?: string): string[] {
+    const queries = []
+
+    // Base query
+    queries.push(userQuery)
+
+    // Technology-specific queries
+    if (userQuery.toLowerCase().includes("react") || userQuery.toLowerCase().includes("component")) {
+      queries.push(`modern React components ${userQuery} 2024`)
+      queries.push(`React best practices ${userQuery}`)
+    }
+
+    if (userQuery.toLowerCase().includes("next") || userQuery.toLowerCase().includes("website")) {
+      queries.push(`Next.js 14 ${userQuery} examples`)
+      queries.push(`Next.js app router ${userQuery}`)
+    }
+
+    if (userQuery.toLowerCase().includes("tailwind") || userQuery.toLowerCase().includes("css")) {
+      queries.push(`Tailwind CSS ${userQuery} examples`)
+      queries.push(`modern CSS ${userQuery} 2024`)
+    }
+
+    // GitHub and code examples
+    queries.push(`GitHub ${userQuery} examples`)
+    queries.push(`${userQuery} code examples 2024`)
+
+    // If we have code context, search for improvements
+    if (codeContext) {
+      queries.push(`improve ${userQuery} performance`)
+      queries.push(`${userQuery} security best practices`)
+    }
+
+    return queries.slice(0, 4) // Limit to 4 queries to avoid rate limits
   }
 
   private buildStyleInstructions(stylePreferences?: StylePreferences): string {
@@ -582,15 +673,28 @@ ${previousCode}
 Generate improved code that addresses the feedback.`
       }
 
+      // Get real-time knowledge
+      const realTimeKnowledge = await this.searchRealTimeKnowledge(enhancedPrompt, previousCode)
+
       let codeGenPrompt: string
 
       if (request.mode === "codegen") {
         // Build style instructions
         const styleInstructions = this.buildStyleInstructions(request.stylePreferences)
 
-        // Special codegen mode for website building
-        codeGenPrompt = `You are v0-1.0-md, a legendary website-builder.
+        // Special codegen mode for website building with real-time knowledge
+        codeGenPrompt = `You are v0-1.0-md, a legendary website-builder with access to real-time knowledge.
+
+${realTimeKnowledge}
+
 Generate a complete Next.js + Tailwind landing page for: "${enhancedPrompt}"${styleInstructions}
+
+Use the real-time knowledge above to:
+- Implement modern, up-to-date components and patterns
+- Follow current best practices from 2024
+- Use the latest Next.js 14+ features
+- Incorporate modern design trends
+- Apply security and performance optimizations
 
 CRITICAL: Output ONLY valid JSON without any markdown formatting, explanations, or escaped quotes.
 
@@ -618,23 +722,25 @@ Requirements:
 - Add proper TypeScript types
 - Make it production-ready
 - Follow the style requirements exactly
+- Implement patterns from the real-time knowledge above
 
 IMPORTANT: Return ONLY the JSON object. No explanations, no markdown, no code blocks, no escaped quotes in the JSON keys or structure.`
       } else {
-        // Standard mode with document retrieval
+        // Standard mode with document retrieval + real-time search
         const docs = await this.retrieveRelevantDocs(enhancedPrompt)
-        const contextualPrompt = `${docs.map((d) => d.text).join("\n\n")}\n\nUser: ${enhancedPrompt}`
+        const contextualPrompt = `${docs.map((d) => d.text).join("\n\n")}${realTimeKnowledge}\n\nUser: ${enhancedPrompt}`
 
-        codeGenPrompt = `You are v0-1.0-md, a specialized code generation model. Generate clean, functional code based on this request with relevant context:
+        codeGenPrompt = `You are v0-1.0-md, a specialized code generation model with access to real-time knowledge.
 
 ${contextualPrompt}
 
 Focus on:
-- Clean, readable code
-- Best practices from the provided context
-- Proper structure
-- Working functionality
-- Security considerations
+- Clean, readable code using modern patterns from the real-time knowledge
+- Best practices from both the provided context and current 2024 standards
+- Proper structure following latest conventions
+- Working functionality with modern approaches
+- Security considerations from current best practices
+- Performance optimizations using latest techniques
 
 Generate ONLY the code, no explanations:`
       }
@@ -647,6 +753,7 @@ Generate ONLY the code, no explanations:`
           mode: request.mode,
           promptLength: codeGenPrompt.length,
           stylePreferences: request.stylePreferences,
+          hasRealTimeKnowledge: realTimeKnowledge.length > 0,
         },
         null,
         0,
@@ -656,7 +763,8 @@ Generate ONLY the code, no explanations:`
         generateText({
           model: groq("meta-llama/llama-4-scout-17b-16e-instruct"),
           prompt: codeGenPrompt,
-          system: "You are v0-1.0-md, a code generation specialist. Output only clean, functional code.",
+          system:
+            "You are v0-1.0-md, a code generation specialist with access to real-time knowledge. Use modern patterns and current best practices. Output only clean, functional code.",
         }),
         new Promise((_, reject) =>
           setTimeout(() => reject(new Error("Code generation timeout")), this.GENERATION_TIMEOUT),
@@ -672,6 +780,7 @@ Generate ONLY the code, no explanations:`
           model: "meta-llama/llama-4-scout-17b-16e-instruct",
           generationTime,
           tokenCount: (result as any).usage?.totalTokens,
+          realTimeKnowledgeUsed: realTimeKnowledge.length > 0,
         },
         timestamp: new Date().toISOString(),
       }
