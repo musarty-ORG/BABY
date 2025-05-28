@@ -1,50 +1,48 @@
 import type { NextRequest } from "next/server"
+import { Groq } from "groq-sdk"
 
-export const maxDuration = 60
+const groq = new Groq({
+  apiKey: process.env.GROQ_API_KEY,
+})
+
+export const maxDuration = 30
 
 export async function POST(req: NextRequest) {
   try {
-    const { text, voice = "Cheyenne-PlayAI", model = "playai-tts", response_format = "wav" } = await req.json()
+    const body = await req.json()
+    const { text, voice = "Cheyenne-PlayAI", format = "mp3" } = body
 
-    if (!text) {
-      return Response.json({ error: "Text is required" }, { status: 400 })
+    if (!text || typeof text !== "string") {
+      return Response.json({ error: "Text is required and must be a string" }, { status: 400 })
     }
 
-    // Call GROQ Speech API
-    const response = await fetch("https://api.groq.com/openai/v1/audio/speech", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model,
-        voice,
-        input: text,
-        response_format,
-      }),
+    // Validate voice option
+    const validVoices = ["Cheyenne-PlayAI", "Basil-PlayAI", "Celeste-PlayAI", "Thunder-PlayAI"]
+    if (!validVoices.includes(voice)) {
+      return Response.json({ error: "Invalid voice option" }, { status: 400 })
+    }
+
+    // Synthesize speech using GROQ PlayAI
+    const response = await groq.audio.speech.create({
+      model: "playai-tts",
+      voice: voice as any,
+      input: text,
+      response_format: format as "mp3" | "wav",
     })
 
-    if (!response.ok) {
-      const error = await response.text()
-      console.error("GROQ speech synthesis error:", error)
-      return Response.json({ error: "Speech synthesis failed" }, { status: 500 })
-    }
-
-    // Return the audio data
     const audioBuffer = await response.arrayBuffer()
 
     return new Response(audioBuffer, {
       headers: {
-        "Content-Type": "audio/wav",
+        "Content-Type": `audio/${format}`,
         "Content-Length": audioBuffer.byteLength.toString(),
       },
     })
   } catch (error) {
-    console.error("Speech synthesis processing error:", error)
+    console.error("Speech synthesis error:", error)
     return Response.json(
       {
-        error: "Speech synthesis processing failed",
+        error: "Speech synthesis failed",
         details: error instanceof Error ? error.message : "Unknown error",
       },
       { status: 500 },

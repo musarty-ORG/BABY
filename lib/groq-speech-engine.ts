@@ -1,3 +1,5 @@
+import { Groq } from "groq-sdk"
+
 export interface VoiceOption {
   id: string
   name: string
@@ -5,23 +7,35 @@ export interface VoiceOption {
 }
 
 export const VOICE_OPTIONS: VoiceOption[] = [
-  { id: "Cheyenne-PlayAI", name: "Cheyenne", description: "Warm & friendly (default)" },
-  { id: "Basil-PlayAI", name: "Basil", description: "Professional & clear" },
-  { id: "Celeste-PlayAI", name: "Celeste", description: "Energetic & upbeat" },
-  { id: "Thunder-PlayAI", name: "Thunder", description: "Deep & powerful" },
+  { id: "Cheyenne-PlayAI", name: "Cheyenne", description: "Default - Warm and friendly" },
+  { id: "Basil-PlayAI", name: "Basil", description: "Professional and clear" },
+  { id: "Celeste-PlayAI", name: "Celeste", description: "Energetic and upbeat" },
+  { id: "Thunder-PlayAI", name: "Thunder", description: "Deep and powerful" },
 ]
 
 export class GroqSpeechEngine {
+  private groq: Groq
   private mediaRecorder: MediaRecorder | null = null
   private audioChunks: Blob[] = []
   private isRecording = false
 
-  // Start recording audio
+  constructor() {
+    this.groq = new Groq({
+      apiKey: process.env.GROQ_API_KEY,
+      dangerouslyAllowBrowser: true, // Only for client-side usage
+    })
+  }
+
+  // Speech-to-Text (STT) using GROQ Whisper
   async startRecording(): Promise<void> {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      this.mediaRecorder = new MediaRecorder(stream)
+      this.mediaRecorder = new MediaRecorder(stream, {
+        mimeType: "audio/webm;codecs=opus",
+      })
+
       this.audioChunks = []
+      this.isRecording = true
 
       this.mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
@@ -29,26 +43,30 @@ export class GroqSpeechEngine {
         }
       }
 
-      this.mediaRecorder.start()
-      this.isRecording = true
+      this.mediaRecorder.start(1000) // Collect data every second
+      console.log("🎤 Recording started...")
     } catch (error) {
       console.error("Failed to start recording:", error)
-      throw error
+      throw new Error("Microphone access denied or not available")
     }
   }
 
-  // Stop recording and transcribe
   async stopRecording(): Promise<string> {
     return new Promise((resolve, reject) => {
       if (!this.mediaRecorder || !this.isRecording) {
-        reject(new Error("Not currently recording"))
+        reject(new Error("No active recording"))
         return
       }
 
       this.mediaRecorder.onstop = async () => {
         try {
-          const audioBlob = new Blob(this.audioChunks, { type: "audio/wav" })
+          const audioBlob = new Blob(this.audioChunks, { type: "audio/webm" })
           const transcript = await this.transcribeAudio(audioBlob)
+
+          // Stop all tracks to release microphone
+          const stream = this.mediaRecorder?.stream
+          stream?.getTracks().forEach((track) => track.stop())
+
           this.isRecording = false
           resolve(transcript)
         } catch (error) {
@@ -57,93 +75,86 @@ export class GroqSpeechEngine {
       }
 
       this.mediaRecorder.stop()
-      this.mediaRecorder.stream.getTracks().forEach((track) => track.stop())
     })
   }
 
-  // Cancel recording
-  cancelRecording(): void {
-    if (this.mediaRecorder && this.isRecording) {
-      this.mediaRecorder.stop()
-      this.mediaRecorder.stream.getTracks().forEach((track) => track.stop())
-      this.isRecording = false
-      this.audioChunks = []
+  private async transcribeAudio(audioBlob: Blob): Promise<string> {
+    try {
+      // Convert blob to File for GROQ API
+      const audioFile = new File([audioBlob], "recording.webm", { type: "audio/webm" })
+
+      const transcription = await this.groq.audio.transcriptions.create({
+        file: audioFile,
+        model: "distil-whisper-large-v3-en",
+        language: "en", // English only as requested
+        response_format: "text",
+      })
+
+      return transcription as string
+    } catch (error) {
+      console.error("Transcription failed:", error)
+      throw new Error("Failed to transcribe audio")
     }
   }
 
-  // Check if currently recording
+  // Text-to-Speech (TTS) using GROQ PlayAI
+  async synthesizeSpeech(
+    text: string,
+    voice = "Cheyenne-PlayAI",
+    responseFormat: "mp3" | "wav" = "mp3",
+  ): Promise<ArrayBuffer> {
+    try {
+      const response = await this.groq.audio.speech.create({
+        model: "playai-tts",
+        voice: voice as any,
+        input: text,
+        response_format: responseFormat,
+      })
+
+      return await response.arrayBuffer()
+    } catch (error) {
+      console.error("Speech synthesis failed:", error)
+      throw new Error("Failed to synthesize speech")
+    }
+  }
+
+  async speakText(text: string, voice = "Cheyenne-PlayAI"): Promise<void> {
+    try {
+      const audioBuffer = await this.synthesizeSpeech(text, voice)
+      const audioBlob = new Blob([audioBuffer], { type: "audio/mp3" })
+      const audioUrl = URL.createObjectURL(audioBlob)
+
+      const audio = new Audio(audioUrl)
+
+      return new Promise((resolve, reject) => {
+        audio.onended = () => {
+          URL.revokeObjectURL(audioUrl)
+          resolve()
+        }
+        audio.onerror = () => {
+          URL.revokeObjectURL(audioUrl)
+          reject(new Error("Audio playback failed"))
+        }
+        audio.play()
+      })
+    } catch (error) {
+      console.error("Text-to-speech failed:", error)
+      throw error
+    }
+  }
+
+  // Utility methods
   isCurrentlyRecording(): boolean {
     return this.isRecording
   }
 
-  // Transcribe audio using GROQ STT
-  private async transcribeAudio(audioBlob: Blob): Promise<string> {
-    const formData = new FormData()
-    formData.append("audio", audioBlob, "recording.wav")
-
-    const response = await fetch("/api/speech/transcribe", {
-      method: "POST",
-      body: formData,
-    })
-
-    if (!response.ok) {
-      throw new Error("Transcription failed")
-    }
-
-    const result = await response.json()
-    return result.transcript || ""
-  }
-
-  // Speak text using GROQ TTS
-  async speakText(text: string, voice = "Cheyenne-PlayAI"): Promise<void> {
-    try {
-      const audioBuffer = await this.synthesizeSpeech(text, voice)
-      await this.playAudio(audioBuffer)
-    } catch (error) {
-      console.error("Failed to speak text:", error)
-      throw error
-    }
-  }
-
-  // Synthesize speech using GROQ TTS
-  async synthesizeSpeech(text: string, voice = "Cheyenne-PlayAI"): Promise<ArrayBuffer> {
-    const response = await fetch("/api/speech/synthesize", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        text,
-        voice,
-        model: "playai-tts",
-        response_format: "wav",
-      }),
-    })
-
-    if (!response.ok) {
-      throw new Error("Speech synthesis failed")
-    }
-
-    return response.arrayBuffer()
-  }
-
-  // Play audio from buffer
-  private async playAudio(audioBuffer: ArrayBuffer): Promise<void> {
-    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
-    const audioBufferSource = audioContext.createBufferSource()
-
-    try {
-      const decodedAudio = await audioContext.decodeAudioData(audioBuffer)
-      audioBufferSource.buffer = decodedAudio
-      audioBufferSource.connect(audioContext.destination)
-      audioBufferSource.start()
-
-      return new Promise((resolve) => {
-        audioBufferSource.onended = () => resolve()
-      })
-    } catch (error) {
-      console.error("Failed to play audio:", error)
-      throw error
+  cancelRecording(): void {
+    if (this.mediaRecorder && this.isRecording) {
+      this.mediaRecorder.stop()
+      const stream = this.mediaRecorder.stream
+      stream?.getTracks().forEach((track) => track.stop())
+      this.isRecording = false
+      this.audioChunks = []
     }
   }
 }
