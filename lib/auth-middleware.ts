@@ -1,178 +1,185 @@
 import type { NextRequest } from "next/server"
+import { rateLimiter } from "./rate-limiter"
+import { AuthenticationError, AuthorizationError } from "./error-handler"
 import { authSystem } from "./auth-system"
-import { AuthenticationError, AuthorizationError, RateLimitError } from "./error-handler"
-import { analyticsEngine } from "./analytics-engine"
-import { rateLimiter, RateLimiter } from "./rate-limiter"
+import { pipelineLogger } from "./pipeline-logger"
 
-export async function requireAuth(req: NextRequest) {
-  const sessionId = req.headers.get("authorization")?.replace("Bearer ", "")
-  const apiKey = req.headers.get("x-api-key")
-  const clientIP = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "unknown"
+// Rate limiting rules
+const LOGIN_RULES = [
+  {
+    key: "global_login",
+    limit: 1000,
+    window: 60 * 60, // 1 hour
+    errorMessage: "Too many login attempts globally",
+  },
+]
 
-  // Check for API key first (for programmatic access)
-  if (apiKey) {
-    if (apiKey !== process.env.API_SECRET_KEY) {
-      throw new AuthenticationError("Invalid API key")
-    }
+const OTP_RULES = [
+  {
+    key: "global_otp",
+    limit: 500,
+    window: 60 * 60, // 1 hour
+    errorMessage: "Too many OTP requests globally",
+  },
+]
 
-    // Rate limit API key usage
-    const rateLimitResult = await rateLimiter.checkLimit({
-      identifier: `api_key:${apiKey.slice(-8)}`,
-      ...RateLimiter.RULES.API_GENERAL,
-    })
+export async function checkLoginRateLimit(req: NextRequest, email: string): Promise<any> {
+  const requestId = req.headers.get("X-Request-ID") || `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+  const ip = req.headers.get("x-forwarded-for") || "unknown"
 
-    if (!rateLimitResult.success) {
-      throw new RateLimitError(`API rate limit exceeded. Try again in ${rateLimitResult.retryAfter} seconds`)
-    }
-
-    // Track API key usage
-    await analyticsEngine.trackEvent({
-      type: "api_call",
-      endpoint: req.url,
-      method: req.method,
-      status_code: 200,
-      metadata: {
-        authType: "api_key",
-        rateLimitRemaining: rateLimitResult.remaining,
-        clientIP,
+  try {
+    // Create user-specific and IP-specific rules
+    const rules = [
+      ...LOGIN_RULES,
+      {
+        key: `login_email_${email.toLowerCase()}`,
+        limit: 10,
+        window: 60 * 15, // 15 minutes
+        errorMessage: "Too many login attempts for this email",
       },
+      {
+        key: `login_ip_${ip}`,
+        limit: 50,
+        window: 60 * 60, // 1 hour
+        errorMessage: "Too many login attempts from this IP address",
+      },
+    ]
+
+    return await rateLimiter.checkMultipleRules(rules)
+  } catch (error) {
+    // Log the error but don't block the request if rate limiting fails
+    await pipelineLogger.logError(requestId, "AUTH_MIDDLEWARE", `Login rate limit error: ${error.message}`, false, {
+      email,
+      ip,
     })
 
-    return { id: "api_user", email: "api@system", role: "user", authType: "api_key" }
+    // If it's a rate limit error, rethrow it
+    if (error.name === "RateLimitError") {
+      throw error
+    }
+
+    // Otherwise, allow the request to proceed
+    return {
+      success: true,
+      remaining: 100,
+      reset: Date.now() + 60 * 1000,
+      limit: 100,
+    }
   }
-
-  // Check for session token
-  if (!sessionId) {
-    throw new AuthenticationError("Authentication required - provide session token or API key")
-  }
-
-  const session = await authSystem.validateSession(sessionId)
-
-  if (!session) {
-    throw new AuthenticationError("Invalid or expired session")
-  }
-
-  // Rate limit session usage
-  const rateLimitResult = await rateLimiter.checkLimit({
-    identifier: `user:${session.userId}`,
-    ...RateLimiter.RULES.API_GENERAL,
-  })
-
-  if (!rateLimitResult.success) {
-    throw new RateLimitError(`Rate limit exceeded. Try again in ${rateLimitResult.retryAfter} seconds`)
-  }
-
-  // Track session usage
-  await analyticsEngine.trackEvent({
-    type: "api_call",
-    endpoint: req.url,
-    method: req.method,
-    status_code: 200,
-    user_id: session.userId,
-    metadata: {
-      authType: "session",
-      rateLimitRemaining: rateLimitResult.remaining,
-      clientIP,
-    },
-  })
-
-  return session
 }
 
-export async function requireAdmin(req: NextRequest) {
-  const session = await requireAuth(req)
+export async function checkOTPRateLimit(req: NextRequest, email: string): Promise<any> {
+  const requestId = req.headers.get("X-Request-ID") || `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+  const ip = req.headers.get("x-forwarded-for") || "unknown"
 
-  if (session.role !== "admin" && session.authType !== "api_key") {
+  try {
+    // Create user-specific and IP-specific rules
+    const rules = [
+      ...OTP_RULES,
+      {
+        key: `otp_email_${email.toLowerCase()}`,
+        limit: 5,
+        window: 60 * 15, // 15 minutes
+        errorMessage: "Too many OTP requests for this email",
+      },
+      {
+        key: `otp_ip_${ip}`,
+        limit: 20,
+        window: 60 * 60, // 1 hour
+        errorMessage: "Too many OTP requests from this IP address",
+      },
+    ]
+
+    return await rateLimiter.checkMultipleRules(rules)
+  } catch (error) {
+    // Log the error but don't block the request if rate limiting fails
+    await pipelineLogger.logError(requestId, "AUTH_MIDDLEWARE", `OTP rate limit error: ${error.message}`, false, {
+      email,
+      ip,
+    })
+
+    // If it's a rate limit error, rethrow it
+    if (error.name === "RateLimitError") {
+      throw error
+    }
+
+    // Otherwise, allow the request to proceed
+    return {
+      success: true,
+      remaining: 100,
+      reset: Date.now() + 60 * 1000,
+      limit: 100,
+    }
+  }
+}
+
+export async function requireAuth(req: NextRequest): Promise<any> {
+  const requestId = req.headers.get("X-Request-ID") || `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+
+  try {
+    const authHeader = req.headers.get("authorization")
+
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      throw new AuthenticationError("Authentication required")
+    }
+
+    const token = authHeader.split(" ")[1]
+
+    if (!token) {
+      throw new AuthenticationError("Invalid token format")
+    }
+
+    // Verify the token
+    const payload = await authSystem.verifyToken(token)
+
+    // Get the user from the database to ensure they still exist
+    const user = await authSystem.getUserById(payload.userId)
+
+    if (!user) {
+      throw new AuthenticationError("User not found")
+    }
+
+    return { user, payload }
+  } catch (error) {
+    await pipelineLogger.logWarning(requestId, "AUTH_MIDDLEWARE", `Authentication failed: ${error.message}`, {
+      path: req.nextUrl.pathname,
+    })
+
+    throw new AuthenticationError(error.message || "Authentication failed")
+  }
+}
+
+export async function requireAdmin(req: NextRequest): Promise<any> {
+  const { user } = await requireAuth(req)
+
+  if (user.role !== "admin") {
     throw new AuthorizationError("Admin access required")
   }
 
-  // Additional rate limiting for admin actions
-  if (session.authType !== "api_key") {
-    const rateLimitResult = await rateLimiter.checkLimit({
-      identifier: `admin:${session.userId}`,
-      ...RateLimiter.RULES.ADMIN_ACTION,
-    })
+  return { user }
+}
 
-    if (!rateLimitResult.success) {
-      throw new RateLimitError(`Admin rate limit exceeded. Try again in ${rateLimitResult.retryAfter} seconds`)
+export async function checkRateLimit(req: NextRequest, identifier: string, rules: any[] = []): Promise<any> {
+  try {
+    const defaultRules = [
+      {
+        key: `general_${identifier}`,
+        limit: 100,
+        window: 3600, // 1 hour
+        errorMessage: "Rate limit exceeded",
+      },
+    ]
+
+    const rateLimitRules = rules.length > 0 ? rules : defaultRules
+    return await rateLimiter.checkMultipleRules(rateLimitRules)
+  } catch (error) {
+    // Log error but don't block request
+    console.error("Rate limit check failed:", error)
+    return {
+      success: true,
+      remaining: 100,
+      reset: Date.now() + 3600000,
+      limit: 100,
     }
   }
-
-  return session
-}
-
-export async function requireModeratorOrAdmin(req: NextRequest) {
-  const session = await requireAuth(req)
-
-  if (!["admin", "moderator"].includes(session.role) && session.authType !== "api_key") {
-    throw new AuthorizationError("Moderator or admin access required")
-  }
-
-  return session
-}
-
-// Enhanced rate limiting middleware with multiple rules
-export async function checkRateLimit(req: NextRequest, identifier: string, rules: string[] = ["API_GENERAL"]) {
-  const clientIP = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "unknown"
-
-  const rateLimitConfigs = rules.map((ruleName) => ({
-    identifier: `${identifier}:${clientIP}`,
-    ...(RateLimiter.RULES as any)[ruleName],
-  }))
-
-  const result = await rateLimiter.checkMultipleRules(rateLimitConfigs)
-
-  if (!result.success) {
-    throw new RateLimitError(`Rate limit exceeded. Try again in ${result.retryAfter} seconds`)
-  }
-
-  return result
-}
-
-// Specific rate limiting functions for different endpoints
-export async function checkOTPRateLimit(req: NextRequest, email: string) {
-  const clientIP = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "unknown"
-
-  const rules = [
-    { identifier: `otp:email:${email}`, ...RateLimiter.RULES.OTP_REQUEST },
-    { identifier: `otp:ip:${clientIP}`, ...RateLimiter.RULES.OTP_REQUEST },
-  ]
-
-  const result = await rateLimiter.checkMultipleRules(rules)
-
-  if (!result.success) {
-    throw new RateLimitError(`Too many OTP requests. Try again in ${result.retryAfter} seconds`)
-  }
-
-  return result
-}
-
-export async function checkLoginRateLimit(req: NextRequest, email: string) {
-  const clientIP = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "unknown"
-
-  const rules = [
-    { identifier: `login:email:${email}`, ...RateLimiter.RULES.LOGIN_ATTEMPT },
-    { identifier: `login:ip:${clientIP}`, ...RateLimiter.RULES.LOGIN_ATTEMPT },
-  ]
-
-  const result = await rateLimiter.checkMultipleRules(rules)
-
-  if (!result.success) {
-    throw new RateLimitError(`Too many login attempts. Try again in ${result.retryAfter} seconds`)
-  }
-
-  return result
-}
-
-export async function checkChatRateLimit(req: NextRequest, userId: string) {
-  const result = await rateLimiter.checkLimit({
-    identifier: `chat:${userId}`,
-    ...RateLimiter.RULES.CHAT_MESSAGE,
-  })
-
-  if (!result.success) {
-    throw new RateLimitError(`Chat rate limit exceeded. Try again in ${result.retryAfter} seconds`)
-  }
-
-  return result
 }

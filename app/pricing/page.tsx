@@ -1,11 +1,76 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
-import { Check, Zap, Shield, Brain, ArrowRight, Sparkles, Globe, Rocket } from 'lucide-react'
+import { Check, Zap, ArrowRight, Sparkles, Star, Crown, Rocket } from "lucide-react"
 
 export default function PricingPage() {
   const [billingCycle, setBillingCycle] = useState<"monthly" | "yearly">("monthly")
+  const [userSession, setUserSession] = useState<any>(null)
+  const [loading, setLoading] = useState(false)
+
+  // Add useEffect to check for user session
+  useEffect(() => {
+    const sessionToken = localStorage.getItem("session_token")
+    if (sessionToken) {
+      // Fetch user info
+      fetch("/api/user/dashboard", {
+        headers: {
+          Authorization: `Bearer ${sessionToken}`,
+        },
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.success) {
+            setUserSession(data.data.user)
+          }
+        })
+        .catch(console.error)
+    }
+  }, [])
+
+  // Add subscription handler
+  const handleSubscription = async (plan: string) => {
+    // Redirect to checkout page
+    window.location.href = `/checkout?plan=${plan}`
+  }
+
+  // Add top-up handler
+  const handleTopUp = async (messages: number) => {
+    if (!userSession) {
+      alert("Please log in first")
+      return
+    }
+
+    setLoading(true)
+    try {
+      const response = await fetch("/api/paypal/create-order", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          messages,
+          userEmail: userSession.email,
+          userId: userSession.id,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (data.success && data.approval_url) {
+        // Redirect to PayPal for approval
+        window.location.href = data.approval_url
+      } else {
+        alert("Failed to create order: " + data.error)
+      }
+    } catch (error) {
+      console.error("Top-up error:", error)
+      alert("Failed to create order")
+    } finally {
+      setLoading(false)
+    }
+  }
 
   return (
     <div className="min-h-screen bg-black text-white font-mono overflow-hidden">
@@ -81,16 +146,24 @@ export default function PricingPage() {
           {/* Pricing Table */}
           <div className="grid md:grid-cols-3 gap-8 mb-16">
             {/* Basic Homie */}
-            <div className="bg-gray-900/50 border border-purple-500/30 rounded-2xl overflow-hidden transition-all hover:border-purple-400/50 hover:shadow-lg hover:shadow-purple-500/10">
+            <div
+              id="basic-homie"
+              className="bg-gray-900/50 border border-purple-500/30 rounded-2xl overflow-hidden transition-all hover:border-purple-400/50 hover:shadow-lg hover:shadow-purple-500/10 scroll-mt-24"
+            >
               <div className="p-8">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-2xl font-bold text-purple-400">Basic Homie</h3>
+                  <div className="flex items-center gap-2">
+                    <Star className="w-6 h-6 text-purple-400" />
+                    <h3 className="text-2xl font-bold text-purple-400">Basic Homie</h3>
+                  </div>
                   <div className="bg-purple-500/20 text-purple-400 px-3 py-1 rounded-full text-xs font-semibold">
                     STARTER
                   </div>
                 </div>
                 <div className="mb-6">
-                  <div className="text-4xl font-bold text-white mb-2">$3<span className="text-lg">/month</span></div>
+                  <div className="text-4xl font-bold text-white mb-2">
+                    $3<span className="text-lg">/month</span>
+                  </div>
                   <p className="text-gray-400 text-sm">Perfect for hobby projects and testing</p>
                 </div>
                 <div className="space-y-4 mb-8">
@@ -110,28 +183,46 @@ export default function PricingPage() {
                     <Check className="w-5 h-5 text-green-400" />
                     <span className="text-gray-300">Basic code generation</span>
                   </div>
+                  <div className="flex items-center gap-3">
+                    <Check className="w-5 h-5 text-green-400" />
+                    <span className="text-gray-300">Community support</span>
+                  </div>
                 </div>
-                <button className="w-full bg-gradient-to-r from-purple-600 to-cyan-600 hover:from-purple-500 hover:to-cyan-500 text-white px-6 py-3 rounded-lg font-semibold transition-all duration-300 flex items-center justify-center gap-2">
+                <button
+                  onClick={() => handleSubscription("basic")}
+                  className="w-full bg-gradient-to-r from-purple-600 to-cyan-600 hover:from-purple-500 hover:to-cyan-500 text-white px-6 py-3 rounded-lg font-semibold transition-all duration-300 flex items-center justify-center gap-2"
+                >
                   <span>Get Started</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
+                <div className="mt-4 text-center">
+                  <p className="text-xs text-purple-300/70">Product: basic_homie</p>
+                </div>
               </div>
             </div>
 
             {/* Builder Homie */}
-            <div className="bg-gray-900/50 border border-green-500/30 rounded-2xl overflow-hidden relative transition-all hover:border-green-400/50 hover:shadow-lg hover:shadow-green-500/10 transform scale-105">
+            <div
+              id="builder-homie"
+              className="bg-gray-900/50 border border-green-500/30 rounded-2xl overflow-hidden relative transition-all hover:border-green-400/50 hover:shadow-lg hover:shadow-green-500/10 transform scale-105 scroll-mt-24"
+            >
               <div className="absolute top-0 left-0 w-full bg-gradient-to-r from-green-600 to-cyan-600 text-center py-1 text-xs font-bold text-white">
                 MOST POPULAR
               </div>
               <div className="p-8 pt-12">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-2xl font-bold text-green-400">Builder Homie</h3>
+                  <div className="flex items-center gap-2">
+                    <Rocket className="w-6 h-6 text-green-400" />
+                    <h3 className="text-2xl font-bold text-green-400">Builder Homie</h3>
+                  </div>
                   <div className="bg-green-500/20 text-green-400 px-3 py-1 rounded-full text-xs font-semibold">
                     RECOMMENDED
                   </div>
                 </div>
                 <div className="mb-6">
-                  <div className="text-4xl font-bold text-white mb-2">$6<span className="text-lg">/month</span></div>
+                  <div className="text-4xl font-bold text-white mb-2">
+                    $6<span className="text-lg">/month</span>
+                  </div>
                   <p className="text-gray-400 text-sm">Ideal for small to medium projects</p>
                 </div>
                 <div className="space-y-4 mb-8">
@@ -155,25 +246,43 @@ export default function PricingPage() {
                     <Check className="w-5 h-5 text-green-400" />
                     <span className="text-gray-300">Priority support</span>
                   </div>
+                  <div className="flex items-center gap-3">
+                    <Check className="w-5 h-5 text-green-400" />
+                    <span className="text-gray-300">Multi-agent workflows</span>
+                  </div>
                 </div>
-                <button className="w-full bg-gradient-to-r from-green-600 to-cyan-600 hover:from-green-500 hover:to-cyan-500 text-white px-6 py-3 rounded-lg font-semibold transition-all duration-300 flex items-center justify-center gap-2">
+                <button
+                  onClick={() => handleSubscription("builder")}
+                  className="w-full bg-gradient-to-r from-green-600 to-cyan-600 hover:from-green-500 hover:to-cyan-500 text-white px-6 py-3 rounded-lg font-semibold transition-all duration-300 flex items-center justify-center gap-2"
+                >
                   <span>Get Started</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
+                <div className="mt-4 text-center">
+                  <p className="text-xs text-green-300/70">Product: builder_homie</p>
+                </div>
               </div>
             </div>
 
             {/* Architect Homie */}
-            <div className="bg-gray-900/50 border border-blue-500/30 rounded-2xl overflow-hidden transition-all hover:border-blue-400/50 hover:shadow-lg hover:shadow-blue-500/10">
+            <div
+              id="architect-homie"
+              className="bg-gray-900/50 border border-blue-500/30 rounded-2xl overflow-hidden transition-all hover:border-blue-400/50 hover:shadow-lg hover:shadow-blue-500/10 scroll-mt-24"
+            >
               <div className="p-8">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-2xl font-bold text-blue-400">Architect Homie</h3>
+                  <div className="flex items-center gap-2">
+                    <Crown className="w-6 h-6 text-blue-400" />
+                    <h3 className="text-2xl font-bold text-blue-400">Architect Homie</h3>
+                  </div>
                   <div className="bg-blue-500/20 text-blue-400 px-3 py-1 rounded-full text-xs font-semibold">
                     PROFESSIONAL
                   </div>
                 </div>
                 <div className="mb-6">
-                  <div className="text-4xl font-bold text-white mb-2">$9<span className="text-lg">/month</span></div>
+                  <div className="text-4xl font-bold text-white mb-2">
+                    $9<span className="text-lg">/month</span>
+                  </div>
                   <p className="text-gray-400 text-sm">For heavy users and complex projects</p>
                 </div>
                 <div className="space-y-4 mb-8">
@@ -201,12 +310,81 @@ export default function PricingPage() {
                     <Check className="w-5 h-5 text-green-400" />
                     <span className="text-gray-300">Advanced AI features</span>
                   </div>
+                  <div className="flex items-center gap-3">
+                    <Check className="w-5 h-5 text-green-400" />
+                    <span className="text-gray-300">Custom integrations</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <Check className="w-5 h-5 text-green-400" />
+                    <span className="text-gray-300">Dedicated support</span>
+                  </div>
                 </div>
-                <button className="w-full bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white px-6 py-3 rounded-lg font-semibold transition-all duration-300 flex items-center justify-center gap-2">
+                <button
+                  onClick={() => handleSubscription("architect")}
+                  className="w-full bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white px-6 py-3 rounded-lg font-semibold transition-all duration-300 flex items-center justify-center gap-2"
+                >
                   <span>Get Started</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
+                <div className="mt-4 text-center">
+                  <p className="text-xs text-blue-300/70">Product: architect_homie</p>
+                </div>
               </div>
+            </div>
+          </div>
+
+          {/* Plan Comparison Section */}
+          <div className="bg-gray-900/50 border border-purple-500/30 rounded-2xl p-8 mb-16">
+            <h2 className="text-2xl font-bold text-purple-400 mb-8 text-center">Plan Comparison</h2>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-purple-500/30">
+                    <th className="text-left py-4 text-purple-400">Feature</th>
+                    <th className="text-center py-4 text-purple-400">Basic Homie</th>
+                    <th className="text-center py-4 text-green-400">Builder Homie</th>
+                    <th className="text-center py-4 text-blue-400">Architect Homie</th>
+                  </tr>
+                </thead>
+                <tbody className="text-gray-300">
+                  <tr className="border-b border-gray-700/50">
+                    <td className="py-4">Monthly Messages</td>
+                    <td className="text-center py-4">3</td>
+                    <td className="text-center py-4">10</td>
+                    <td className="text-center py-4">25</td>
+                  </tr>
+                  <tr className="border-b border-gray-700/50">
+                    <td className="py-4">Extra Message Cost</td>
+                    <td className="text-center py-4">$1.00</td>
+                    <td className="text-center py-4">$0.90</td>
+                    <td className="text-center py-4">$0.80</td>
+                  </tr>
+                  <tr className="border-b border-gray-700/50">
+                    <td className="py-4">Code Generation</td>
+                    <td className="text-center py-4">Basic</td>
+                    <td className="text-center py-4">Advanced</td>
+                    <td className="text-center py-4">Premium</td>
+                  </tr>
+                  <tr className="border-b border-gray-700/50">
+                    <td className="py-4">Support Level</td>
+                    <td className="text-center py-4">Community</td>
+                    <td className="text-center py-4">Priority</td>
+                    <td className="text-center py-4">Dedicated</td>
+                  </tr>
+                  <tr className="border-b border-gray-700/50">
+                    <td className="py-4">Multi-Agent Workflows</td>
+                    <td className="text-center py-4">❌</td>
+                    <td className="text-center py-4">✅</td>
+                    <td className="text-center py-4">✅</td>
+                  </tr>
+                  <tr>
+                    <td className="py-4">Custom Integrations</td>
+                    <td className="text-center py-4">❌</td>
+                    <td className="text-center py-4">❌</td>
+                    <td className="text-center py-4">✅</td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </div>
 
@@ -258,9 +436,7 @@ export default function PricingPage() {
                     <div className="mt-1 min-w-5">
                       <Zap className="w-5 h-5 text-purple-400" />
                     </div>
-                    <span className="text-gray-300">
-                      If bucket is empty, you'll be prompted to top-up or upgrade
-                    </span>
+                    <span className="text-gray-300">If bucket is empty, you'll be prompted to top-up or upgrade</span>
                   </li>
                 </ul>
               </div>
@@ -274,32 +450,48 @@ export default function PricingPage() {
               <div className="bg-gray-900/50 border border-purple-500/30 rounded-xl p-6 text-center transition-all hover:border-purple-400/50 hover:shadow-lg hover:shadow-purple-500/10">
                 <h3 className="text-lg font-semibold text-purple-400 mb-2">1 Message</h3>
                 <div className="text-2xl font-bold text-white mb-4">$1</div>
-                <button className="w-full bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 text-purple-400 px-4 py-2 rounded-lg transition-all">
-                  Buy Now
+                <button
+                  onClick={() => handleTopUp(1)}
+                  disabled={loading}
+                  className="w-full bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 text-purple-400 px-4 py-2 rounded-lg transition-all disabled:opacity-50"
+                >
+                  {loading ? "Processing..." : "Buy Now"}
                 </button>
               </div>
               <div className="bg-gray-900/50 border border-purple-500/30 rounded-xl p-6 text-center transition-all hover:border-purple-400/50 hover:shadow-lg hover:shadow-purple-500/10">
                 <h3 className="text-lg font-semibold text-purple-400 mb-2">5 Messages</h3>
                 <div className="text-2xl font-bold text-white mb-4">$4.50</div>
                 <div className="text-xs text-green-400 mb-4">Save 10%</div>
-                <button className="w-full bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 text-purple-400 px-4 py-2 rounded-lg transition-all">
-                  Buy Now
+                <button
+                  onClick={() => handleTopUp(5)}
+                  disabled={loading}
+                  className="w-full bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 text-purple-400 px-4 py-2 rounded-lg transition-all disabled:opacity-50"
+                >
+                  {loading ? "Processing..." : "Buy Now"}
                 </button>
               </div>
               <div className="bg-gray-900/50 border border-green-500/30 rounded-xl p-6 text-center transition-all hover:border-green-400/50 hover:shadow-lg hover:shadow-green-500/10">
                 <h3 className="text-lg font-semibold text-green-400 mb-2">10 Messages</h3>
                 <div className="text-2xl font-bold text-white mb-4">$9</div>
                 <div className="text-xs text-green-400 mb-4">Save 10%</div>
-                <button className="w-full bg-green-500/20 hover:bg-green-500/30 border border-green-500/40 text-green-400 px-4 py-2 rounded-lg transition-all">
-                  Best Value
+                <button
+                  onClick={() => handleTopUp(10)}
+                  disabled={loading}
+                  className="w-full bg-green-500/20 hover:bg-green-500/30 border border-green-500/40 text-green-400 px-4 py-2 rounded-lg transition-all disabled:opacity-50"
+                >
+                  {loading ? "Processing..." : "Best Value"}
                 </button>
               </div>
               <div className="bg-gray-900/50 border border-purple-500/30 rounded-xl p-6 text-center transition-all hover:border-purple-400/50 hover:shadow-lg hover:shadow-purple-500/10">
                 <h3 className="text-lg font-semibold text-purple-400 mb-2">25 Messages</h3>
                 <div className="text-2xl font-bold text-white mb-4">$20</div>
                 <div className="text-xs text-green-400 mb-4">Save 20%</div>
-                <button className="w-full bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 text-purple-400 px-4 py-2 rounded-lg transition-all">
-                  Buy Now
+                <button
+                  onClick={() => handleTopUp(25)}
+                  disabled={loading}
+                  className="w-full bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 text-purple-400 px-4 py-2 rounded-lg transition-all disabled:opacity-50"
+                >
+                  {loading ? "Processing..." : "Buy Now"}
                 </button>
               </div>
             </div>
@@ -326,8 +518,8 @@ export default function PricingPage() {
               <div>
                 <h3 className="text-lg font-semibold text-green-400 mb-3">Can I change plans?</h3>
                 <p className="text-gray-300">
-                  Yes, you can upgrade or downgrade your plan at any time. When upgrading, you'll get immediate access to
-                  the new plan's benefits. When downgrading, the change will take effect on your next billing cycle.
+                  Yes, you can upgrade or downgrade your plan at any time. When upgrading, you'll get immediate access
+                  to the new plan's benefits. When downgrading, the change will take effect on your next billing cycle.
                 </p>
               </div>
               <div>

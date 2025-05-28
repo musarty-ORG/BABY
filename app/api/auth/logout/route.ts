@@ -3,10 +3,10 @@ import { withErrorHandler } from "@/lib/error-handler"
 import { authSystem } from "@/lib/auth-system"
 
 export const POST = withErrorHandler(async (req: NextRequest) => {
-  const sessionId = req.headers.get("authorization")?.replace("Bearer ", "")
+  const token = req.headers.get("authorization")?.replace("Bearer ", "")
 
-  if (sessionId) {
-    await authSystem.destroySession(sessionId)
+  if (token) {
+    await authSystem.destroySession(token)
   }
 
   return Response.json({

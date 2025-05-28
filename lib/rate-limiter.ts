@@ -1,91 +1,137 @@
-import { Redis } from "@upstash/redis"
+import type { NextRequest } from "next/server"
+import { RateLimitError } from "./error-handler"
+import { pipelineLogger } from "./pipeline-logger"
 
-const redis = new Redis({
-  url: process.env.KV_REST_API_URL!,
-  token: process.env.KV_REST_API_TOKEN!,
-})
-
-export interface RateLimitConfig {
+interface RateLimitRule {
+  key: string
   limit: number
-  window: number // seconds
-  identifier: string
+  window: number // in seconds
+  errorMessage?: string
 }
 
-export interface RateLimitResult {
+interface RateLimitResult {
   success: boolean
-  limit: number
   remaining: number
-  resetTime: number
-  retryAfter?: number
+  reset: number // timestamp when the limit resets
+  limit: number
 }
 
-export class RateLimiter {
-  async checkLimit(config: RateLimitConfig): Promise<RateLimitResult> {
-    const { limit, window, identifier } = config
+class RateLimiter {
+  private cache = new Map<string, { count: number; expires: number }>()
+
+  constructor() {
+    // Clean up expired entries every minute
+    setInterval(() => this.cleanupExpiredEntries(), 60 * 1000)
+  }
+
+  private cleanupExpiredEntries(): void {
     const now = Date.now()
-    const windowStart = Math.floor(now / (window * 1000))
-    const key = `rate_limit:${identifier}:${windowStart}`
-
-    try {
-      // Use Redis pipeline for atomic operations
-      const pipeline = redis.pipeline()
-      pipeline.incr(key)
-      pipeline.expire(key, window)
-
-      const results = await pipeline.exec()
-      const count = results[0] as number
-
-      const remaining = Math.max(0, limit - count)
-      const resetTime = (windowStart + 1) * window * 1000
-
-      if (count > limit) {
-        return {
-          success: false,
-          limit,
-          remaining: 0,
-          resetTime,
-          retryAfter: Math.ceil((resetTime - now) / 1000),
-        }
-      }
-
-      return {
-        success: true,
-        limit,
-        remaining,
-        resetTime,
-      }
-    } catch (error) {
-      console.error("Rate limiting error:", error)
-      // Fail open - allow request if Redis is down
-      return {
-        success: true,
-        limit,
-        remaining: limit - 1,
-        resetTime: now + window * 1000,
+    for (const [key, value] of this.cache.entries()) {
+      if (value.expires < now) {
+        this.cache.delete(key)
       }
     }
   }
 
-  async checkMultipleRules(rules: RateLimitConfig[]): Promise<RateLimitResult> {
-    const results = await Promise.all(rules.map((rule) => this.checkLimit(rule)))
+  async checkLimit(rule: RateLimitRule): Promise<RateLimitResult> {
+    const now = Date.now()
+    const windowMs = rule.window * 1000
+    const key = rule.key
+    const expires = now + windowMs
 
-    // Return the most restrictive result
-    const failed = results.find((result) => !result.success)
-    if (failed) return failed
+    let entry = this.cache.get(key)
 
-    // Return the result with the least remaining requests
-    return results.reduce((min, current) => (current.remaining < min.remaining ? current : min))
+    if (!entry || entry.expires < now) {
+      // Create new entry if none exists or if expired
+      entry = { count: 1, expires }
+      this.cache.set(key, entry)
+
+      return {
+        success: true,
+        remaining: rule.limit - 1,
+        reset: expires,
+        limit: rule.limit,
+      }
+    }
+
+    // Increment existing entry
+    entry.count++
+
+    // Check if over limit
+    if (entry.count > rule.limit) {
+      return {
+        success: false,
+        remaining: 0,
+        reset: entry.expires,
+        limit: rule.limit,
+      }
+    }
+
+    return {
+      success: true,
+      remaining: rule.limit - entry.count,
+      reset: entry.expires,
+      limit: rule.limit,
+    }
   }
 
-  // Preset rate limiting rules
-  static readonly RULES = {
-    OTP_REQUEST: { limit: 5, window: 300 }, // 5 OTP requests per 5 minutes
-    API_GENERAL: { limit: 100, window: 3600 }, // 100 requests per hour
-    API_HEAVY: { limit: 10, window: 60 }, // 10 heavy operations per minute
-    LOGIN_ATTEMPT: { limit: 10, window: 900 }, // 10 login attempts per 15 minutes
-    ADMIN_ACTION: { limit: 50, window: 3600 }, // 50 admin actions per hour
-    CHAT_MESSAGE: { limit: 30, window: 60 }, // 30 chat messages per minute
+  async checkMultipleRules(rules: RateLimitRule[]): Promise<RateLimitResult> {
+    for (const rule of rules) {
+      const result = await this.checkLimit(rule)
+      if (!result.success) {
+        return result
+      }
+    }
+
+    // All rules passed
+    return {
+      success: true,
+      remaining: Math.min(...rules.map((r) => r.limit)) - 1, // Conservative estimate
+      reset: Math.min(...rules.map((r) => Date.now() + r.window * 1000)),
+      limit: Math.min(...rules.map((r) => r.limit)),
+    }
   }
 }
 
 export const rateLimiter = new RateLimiter()
+
+export async function applyRateLimit(
+  req: NextRequest,
+  rules: RateLimitRule[],
+  requestId: string,
+): Promise<RateLimitResult> {
+  try {
+    const result = await rateLimiter.checkMultipleRules(rules)
+
+    if (!result.success) {
+      const errorMessage = rules.find((r) => !r.errorMessage)?.errorMessage || "Rate limit exceeded"
+      await pipelineLogger.logWarning(requestId, "RATE_LIMITER", `Rate limit exceeded: ${rules[0].key}`)
+      throw new RateLimitError(errorMessage)
+    }
+
+    return result
+  } catch (error) {
+    if (error instanceof RateLimitError) {
+      throw error
+    }
+
+    // Log unexpected errors but don't block the request
+    await pipelineLogger.logError(
+      requestId,
+      "RATE_LIMITER",
+      `Unexpected error in rate limiter: ${error.message}`,
+      false,
+      { stack: error.stack },
+    )
+
+    // Allow the request to proceed if rate limiting fails
+    return {
+      success: true,
+      remaining: 100,
+      reset: Date.now() + 60 * 1000,
+      limit: 100,
+    }
+  }
+}
+
+export { RateLimiter }

@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { AlertCircle, Mail, Shield } from "lucide-react"
 
 interface LoginProps {
-  onLogin: (sessionId: string, user: any) => void
+  onLogin: (token: string, user: any) => void
 }
 
 export function AuthLogin({ onLogin }: LoginProps) {
@@ -45,8 +45,17 @@ export function AuthLogin({ onLogin }: LoginProps) {
       if (process.env.NODE_ENV === "development" && data.otp) {
         setError(`Development OTP: ${data.otp}`)
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to send OTP")
+    } catch (err: any) {
+      // Handle both string errors and API error objects
+      if (err?.error?.message) {
+        setError(err.error.message)
+      } else if (typeof err === "string") {
+        setError(err)
+      } else if (err?.message) {
+        setError(err.message)
+      } else {
+        setError("Failed to send OTP")
+      }
     } finally {
       setLoading(false)
     }
@@ -74,9 +83,22 @@ export function AuthLogin({ onLogin }: LoginProps) {
         throw new Error(data.error?.message || "Invalid OTP")
       }
 
-      onLogin(data.sessionId, data.user)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to verify OTP")
+      // Store JWT token in localStorage
+      localStorage.setItem("auth_token", data.token)
+
+      // Call the onLogin callback with the token and user data
+      onLogin(data.token, data.user)
+    } catch (err: any) {
+      // Handle both string errors and API error objects
+      if (err?.error?.message) {
+        setError(err.error.message)
+      } else if (typeof err === "string") {
+        setError(err)
+      } else if (err?.message) {
+        setError(err.message)
+      } else {
+        setError("Failed to verify OTP")
+      }
     } finally {
       setLoading(false)
     }

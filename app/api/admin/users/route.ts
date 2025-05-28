@@ -14,25 +14,40 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
 
   let users
   if (search) {
-    users = await authSystem.searchUsers(search)
+    users = await authSystem.searchUsers(search, limit)
   } else {
     const offset = (page - 1) * limit
-    users = await authSystem.getAllUsers()
+    users = await authSystem.getAllUsers(limit, offset)
   }
 
+  // Format users for the admin panel
+  const formattedUsers = users.map((user) => ({
+    id: user.id,
+    name: user.name || "Unknown",
+    email: user.email,
+    role: user.role,
+    status: user.status,
+    lastLogin: user.lastLoginAt ? user.lastLoginAt.toLocaleDateString() : "Never",
+    createdAt: user.createdAt.toLocaleDateString(),
+    tokenBalance: user.tokenBalance,
+  }))
+
   await analyticsEngine.trackEvent({
-    type: "api_call",
-    endpoint: "/api/admin/users",
-    method: "GET",
-    status_code: 200,
+    type: "admin_action",
+    metadata: {
+      action: "view_users",
+      endpoint: "/api/admin/users",
+      method: "GET",
+      status_code: 200,
+    },
   })
 
   return Response.json({
     success: true,
-    users: users.slice((page - 1) * limit, page * limit),
-    total: users.length,
+    users: formattedUsers,
+    total: formattedUsers.length,
     page,
-    totalPages: Math.ceil(users.length / limit),
+    totalPages: Math.ceil(formattedUsers.length / limit),
   })
 })
 

@@ -2,25 +2,31 @@ import type { NextRequest } from "next/server"
 import { withErrorHandler } from "@/lib/error-handler"
 import { requireAdmin } from "@/lib/auth-middleware"
 import { analyticsEngine } from "@/lib/analytics-engine"
+import { authSystem } from "@/lib/auth"
 
 export const GET = withErrorHandler(async (req: NextRequest) => {
   await requireAdmin(req)
 
-  const systemMetrics = await analyticsEngine.getSystemMetrics()
+  const [systemMetrics, userStats, subscriptionMetrics, tokenMetrics] = await Promise.all([
+    analyticsEngine.getSystemMetrics(),
+    authSystem.getUserStats(),
+    analyticsEngine.getSubscriptionMetrics(),
+    analyticsEngine.getTokenUsageMetrics(),
+  ])
 
   const metrics = [
     {
-      id: "active_agents",
-      name: "ACTIVE AGENTS",
-      value: Object.values(systemMetrics.agentStatus).filter((status) => status === "active").length,
+      id: "total_users",
+      name: "TOTAL USERS",
+      value: userStats.totalUsers,
       unit: "",
       trend: "stable",
       status: "healthy",
     },
     {
-      id: "pipeline_jobs",
-      name: "PIPELINE JOBS",
-      value: systemMetrics.pipelineJobs,
+      id: "active_users",
+      name: "ACTIVE USERS",
+      value: userStats.activeUsers,
       unit: "",
       trend: "up",
       status: "healthy",
@@ -29,7 +35,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       id: "api_requests",
       name: "API REQUESTS",
       value: systemMetrics.apiCalls,
-      unit: "",
+      unit: "/hr",
       trend: "up",
       status: "healthy",
     },
@@ -50,9 +56,41 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       status: systemMetrics.avgResponseTime > 2000 ? "warning" : "healthy",
     },
     {
-      id: "total_users",
-      name: "TOTAL USERS",
-      value: systemMetrics.totalUsers,
+      id: "pipeline_jobs",
+      name: "PIPELINE JOBS",
+      value: systemMetrics.pipelineJobs,
+      unit: "",
+      trend: "stable",
+      status: "healthy",
+    },
+    {
+      id: "active_subscriptions",
+      name: "ACTIVE SUBSCRIPTIONS",
+      value: subscriptionMetrics.activeSubscriptions,
+      unit: "",
+      trend: "up",
+      status: "healthy",
+    },
+    {
+      id: "monthly_revenue",
+      name: "MONTHLY REVENUE",
+      value: subscriptionMetrics.revenue,
+      unit: "$",
+      trend: "up",
+      status: "healthy",
+    },
+    {
+      id: "tokens_used",
+      name: "TOKENS USED",
+      value: tokenMetrics.totalTokensUsed,
+      unit: "",
+      trend: "up",
+      status: "healthy",
+    },
+    {
+      id: "new_users_today",
+      name: "NEW USERS TODAY",
+      value: userStats.newUsersToday,
       unit: "",
       trend: "stable",
       status: "healthy",
@@ -60,14 +98,21 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   ]
 
   await analyticsEngine.trackEvent({
-    type: "api_call",
-    endpoint: "/api/admin/metrics",
-    method: "GET",
-    status_code: 200,
+    type: "admin_action",
+    metadata: {
+      action: "view_metrics",
+      endpoint: "/api/admin/metrics",
+      method: "GET",
+      status_code: 200,
+    },
   })
 
   return Response.json({
     success: true,
     metrics,
+    systemMetrics,
+    userStats,
+    subscriptionMetrics,
+    tokenMetrics,
   })
 })

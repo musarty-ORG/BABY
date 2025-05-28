@@ -2,10 +2,12 @@
 
 import { useChat } from "ai/react"
 import { useState, useRef, useEffect } from "react"
-import { Send, Terminal, Zap, Code, Shield, Brain, ArrowRight, Sparkles, Cpu, Globe, Rocket } from 'lucide-react'
+import { Send, Terminal, Zap, Code, Shield, Brain, ArrowRight, Sparkles, Cpu, Rocket, User, LogIn } from "lucide-react"
 import Link from "next/link"
+import { useAuth } from "@/components/auth-provider"
 
 export default function CodeHomieHome() {
+  const { user, isAuthenticated, logout } = useAuth()
   const [selectedModel, setSelectedModel] = useState<"scout" | "maverick">("scout")
   const { messages, input, handleInputChange, handleSubmit, isLoading } = useChat({
     body: { model: selectedModel },
@@ -85,10 +87,46 @@ export default function CodeHomieHome() {
               <Link href="/pricing" className="text-gray-400 hover:text-purple-400 transition-colors font-semibold">
                 Pricing
               </Link>
-              <div className="flex items-center gap-2 text-xs">
-                <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                <span className="text-green-400">ONLINE</span>
-              </div>
+
+              {/* Authentication-aware navigation */}
+              {isAuthenticated ? (
+                <div className="flex items-center gap-4">
+                  <Link
+                    href="/dashboard"
+                    className="bg-gradient-to-r from-purple-600 to-cyan-600 hover:from-purple-500 hover:to-cyan-500 text-white px-4 py-2 rounded-lg font-semibold transition-all duration-300 flex items-center gap-2"
+                  >
+                    <User className="w-4 h-4" />
+                    <span>My Dashboard</span>
+                  </Link>
+                  <button
+                    onClick={logout}
+                    className="text-gray-400 hover:text-purple-400 transition-colors font-semibold"
+                  >
+                    Logout
+                  </button>
+                  <div className="flex items-center gap-2 text-xs">
+                    <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                    <span className="text-green-400">ONLINE</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center gap-4">
+                  <Link href="/login" className="text-gray-400 hover:text-purple-400 transition-colors font-semibold">
+                    Login
+                  </Link>
+                  <Link
+                    href="/signup"
+                    className="bg-gradient-to-r from-purple-600 to-cyan-600 hover:from-purple-500 hover:to-cyan-500 text-white px-4 py-2 rounded-lg font-semibold transition-all duration-300 flex items-center gap-2"
+                  >
+                    <LogIn className="w-4 h-4" />
+                    <span>Sign Up</span>
+                  </Link>
+                  <div className="flex items-center gap-2 text-xs">
+                    <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                    <span className="text-green-400">ONLINE</span>
+                  </div>
+                </div>
+              )}
             </nav>
           </div>
         </div>
@@ -141,19 +179,43 @@ export default function CodeHomieHome() {
 
               {/* CTA Buttons */}
               <div className="flex flex-col sm:flex-row gap-4">
-                <Link
-                  href="/multi-agent"
-                  className="group bg-gradient-to-r from-purple-600 to-cyan-600 hover:from-purple-500 hover:to-cyan-500 text-white px-8 py-4 rounded-lg font-semibold transition-all duration-300 flex items-center justify-center gap-2 shadow-lg shadow-purple-500/25"
-                >
-                  <Cpu className="w-5 h-5" />
-                  <span>Launch CODE HOMIE</span>
-                  <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                </Link>
-
-                <button className="bg-gray-800/50 hover:bg-gray-700/50 border border-purple-500/30 hover:border-purple-400 text-purple-300 px-8 py-4 rounded-lg font-semibold transition-all duration-300 flex items-center justify-center gap-2">
-                  <Globe className="w-5 h-5" />
-                  <span>Explore Features</span>
-                </button>
+                {isAuthenticated ? (
+                  <>
+                    <Link
+                      href="/dashboard"
+                      className="group bg-gradient-to-r from-purple-600 to-cyan-600 hover:from-purple-500 hover:to-cyan-500 text-white px-8 py-4 rounded-lg font-semibold transition-all duration-300 flex items-center justify-center gap-2 shadow-lg shadow-purple-500/25"
+                    >
+                      <User className="w-5 h-5" />
+                      <span>Go to Dashboard</span>
+                      <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                    </Link>
+                    <Link
+                      href="/multi-agent"
+                      className="bg-gray-800/50 hover:bg-gray-700/50 border border-purple-500/30 hover:border-purple-400 text-purple-300 px-8 py-4 rounded-lg font-semibold transition-all duration-300 flex items-center justify-center gap-2"
+                    >
+                      <Cpu className="w-5 h-5" />
+                      <span>Launch CODE HOMIE</span>
+                    </Link>
+                  </>
+                ) : (
+                  <>
+                    <Link
+                      href="/signup"
+                      className="group bg-gradient-to-r from-purple-600 to-cyan-600 hover:from-purple-500 hover:to-cyan-500 text-white px-8 py-4 rounded-lg font-semibold transition-all duration-300 flex items-center justify-center gap-2 shadow-lg shadow-purple-500/25"
+                    >
+                      <LogIn className="w-5 h-5" />
+                      <span>Get Started Free</span>
+                      <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                    </Link>
+                    <Link
+                      href="/multi-agent"
+                      className="bg-gray-800/50 hover:bg-gray-700/50 border border-purple-500/30 hover:border-purple-400 text-purple-300 px-8 py-4 rounded-lg font-semibold transition-all duration-300 flex items-center justify-center gap-2"
+                    >
+                      <Cpu className="w-5 h-5" />
+                      <span>Try Demo</span>
+                    </Link>
+                  </>
+                )}
               </div>
             </div>
 
@@ -178,164 +240,165 @@ export default function CodeHomieHome() {
             </div>
           </div>
 
-          {/* Chat Interface */}
-          <div className="mt-16">
-            <div className="max-w-4xl mx-auto">
-              <div className="bg-gray-900/50 border border-purple-500/30 rounded-2xl backdrop-blur-sm shadow-2xl shadow-purple-500/10">
-                {/* Chat Header */}
-                <div className="border-b border-purple-500/30 p-6">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="flex items-center gap-2">
-                        <Terminal className="w-6 h-6 text-purple-400" />
-                        <span className="text-xl font-bold text-purple-400">AI CHAT TERMINAL</span>
-                      </div>
-
-                      {/* Model Toggle */}
-                      <div className="flex items-center gap-2 ml-6">
-                        <span className="text-xs text-purple-500/70">MODEL:</span>
-                        <div className="flex items-center bg-gray-800/50 border border-purple-500/30 rounded-lg p-1">
-                          <button
-                            onClick={() => setSelectedModel("scout")}
-                            className={`px-3 py-1 text-xs font-semibold rounded transition-all ${
-                              selectedModel === "scout"
-                                ? "bg-purple-500/30 text-purple-300 border border-purple-500/50"
-                                : "text-purple-500/70 hover:text-purple-400"
-                            }`}
-                          >
-                            SCOUT
-                          </button>
-                          <button
-                            onClick={() => setSelectedModel("maverick")}
-                            className={`px-3 py-1 text-xs font-semibold rounded transition-all ${
-                              selectedModel === "maverick"
-                                ? "bg-purple-500/30 text-purple-300 border border-purple-500/50"
-                                : "text-purple-500/70 hover:text-purple-400"
-                            }`}
-                          >
-                            MAVERICK
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-4">
-                      <div className="flex items-center gap-1 text-xs text-purple-500/70">
-                        <Shield className="w-3 h-3" />
-                        <span>SECURE</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-xs text-green-500/70">
-                        <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                        <span>CONNECTED</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Messages */}
-                <div className="h-[50vh] overflow-y-auto p-6 space-y-4">
-                  {messages.length === 0 && (
-                    <div className="text-center py-12">
-                      <Brain className="w-16 h-16 text-purple-500/50 mx-auto mb-4" />
-                      <h2 className="text-xl font-semibold text-purple-400 mb-2">Code Homie AI Ready</h2>
-                      <p className="text-purple-500/70 text-sm mb-6">
-                        Your legendary coding companion is online. Ask anything about programming, get code examples, or
-                        discuss tech.
-                      </p>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-w-2xl mx-auto">
-                        <div className="bg-gray-800/30 border border-purple-500/20 rounded-lg p-3 text-left">
-                          <p className="text-sm text-purple-300 font-semibold mb-1">💡 Get Code Examples</p>
-                          <p className="text-xs text-gray-400">"Show me a React component for a login form"</p>
-                        </div>
-                        <div className="bg-gray-800/30 border border-cyan-500/20 rounded-lg p-3 text-left">
-                          <p className="text-sm text-cyan-300 font-semibold mb-1">🚀 Debug Issues</p>
-                          <p className="text-xs text-gray-400">"Help me fix this JavaScript error"</p>
-                        </div>
-                        <div className="bg-gray-800/30 border border-pink-500/20 rounded-lg p-3 text-left">
-                          <p className="text-sm text-pink-300 font-semibold mb-1">🎯 Learn Concepts</p>
-                          <p className="text-xs text-gray-400">"Explain async/await in simple terms"</p>
-                        </div>
-                        <div className="bg-gray-800/30 border border-green-500/20 rounded-lg p-3 text-left">
-                          <p className="text-sm text-green-300 font-semibold mb-1">⚡ Optimize Code</p>
-                          <p className="text-xs text-gray-400">"How can I make this function faster?"</p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {messages.map((message) => (
-                    <div
-                      key={message.id}
-                      className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
-                    >
-                      <div
-                        className={`max-w-[80%] p-4 rounded-lg ${
-                          message.role === "user"
-                            ? "bg-gradient-to-r from-purple-600/20 to-cyan-600/20 border border-purple-500/40 text-purple-100"
-                            : "bg-gray-800/50 border border-purple-500/20 text-gray-100"
-                        }`}
-                      >
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className="text-xs font-semibold text-purple-400">
-                            {message.role === "user" ? "[USER]" : "[CODE HOMIE]"}
-                          </span>
-                          <span className="text-xs text-purple-500/50">{new Date().toLocaleTimeString()}</span>
-                        </div>
-                        <div className="whitespace-pre-wrap text-sm leading-relaxed">{message.content}</div>
-                      </div>
-                    </div>
-                  ))}
-
-                  {isTyping && (
-                    <div className="flex justify-start">
-                      <div className="bg-gray-800/50 border border-purple-500/20 text-gray-100 max-w-[80%] p-4 rounded-lg">
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className="text-xs font-semibold text-purple-400">[CODE HOMIE]</span>
-                          <span className="text-xs text-purple-500/50">{new Date().toLocaleTimeString()}</span>
-                        </div>
+          {/* Chat Interface - Only show if not authenticated or for demo */}
+          {!isAuthenticated && (
+            <div className="mt-16">
+              <div className="max-w-4xl mx-auto">
+                <div className="bg-gray-900/50 border border-purple-500/30 rounded-2xl backdrop-blur-sm shadow-2xl shadow-purple-500/10">
+                  {/* Chat Header */}
+                  <div className="border-b border-purple-500/30 p-6">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
                         <div className="flex items-center gap-2">
-                          <span className="text-sm">Thinking</span>
-                          <div className="flex gap-1">
-                            <div className="w-1 h-1 bg-purple-400 rounded-full animate-pulse"></div>
-                            <div className="w-1 h-1 bg-purple-400 rounded-full animate-pulse delay-100"></div>
-                            <div className="w-1 h-1 bg-purple-400 rounded-full animate-pulse delay-200"></div>
+                          <Terminal className="w-6 h-6 text-purple-400" />
+                          <span className="text-xl font-bold text-purple-400">AI CHAT DEMO</span>
+                        </div>
+
+                        {/* Model Toggle */}
+                        <div className="flex items-center gap-2 ml-6">
+                          <span className="text-xs text-purple-500/70">MODEL:</span>
+                          <div className="flex items-center bg-gray-800/50 border border-purple-500/30 rounded-lg p-1">
+                            <button
+                              onClick={() => setSelectedModel("scout")}
+                              className={`px-3 py-1 text-xs font-semibold rounded transition-all ${
+                                selectedModel === "scout"
+                                  ? "bg-purple-500/30 text-purple-300 border border-purple-500/50"
+                                  : "text-purple-500/70 hover:text-purple-400"
+                              }`}
+                            >
+                              SCOUT
+                            </button>
+                            <button
+                              onClick={() => setSelectedModel("maverick")}
+                              className={`px-3 py-1 text-xs font-semibold rounded transition-all ${
+                                selectedModel === "maverick"
+                                  ? "bg-purple-500/30 text-purple-300 border border-purple-500/50"
+                                  : "text-purple-500/70 hover:text-purple-400"
+                              }`}
+                            >
+                              MAVERICK
+                            </button>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  )}
 
-                  <div ref={messagesEndRef} />
-                </div>
-
-                {/* Input Form */}
-                <div className="border-t border-purple-500/30 p-6">
-                  <form onSubmit={handleSubmit} className="flex gap-3">
-                    <div className="flex-1 relative">
-                      <input
-                        value={input}
-                        onChange={handleInputChange}
-                        placeholder="Ask Code Homie anything about programming..."
-                        className="w-full bg-gray-800/50 border border-purple-500/30 rounded-lg px-4 py-3 text-purple-100 placeholder-purple-500/50 focus:outline-none focus:border-purple-400 focus:ring-1 focus:ring-purple-400/50"
-                        disabled={isLoading}
-                      />
-                      <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                        <Zap className="w-4 h-4 text-purple-500/50" />
+                      <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-1 text-xs text-purple-500/70">
+                          <Shield className="w-3 h-3" />
+                          <span>DEMO MODE</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-xs text-green-500/70">
+                          <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                          <span>CONNECTED</span>
+                        </div>
                       </div>
                     </div>
-                    <button
-                      type="submit"
-                      disabled={isLoading || !input.trim()}
-                      className="bg-gradient-to-r from-purple-600 to-cyan-600 hover:from-purple-500 hover:to-cyan-500 text-white px-6 py-3 rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-lg shadow-purple-500/25"
-                    >
-                      <Send className="w-4 h-4" />
-                      <span className="hidden sm:inline">SEND</span>
-                    </button>
-                  </form>
+                  </div>
+
+                  {/* Messages */}
+                  <div className="h-[50vh] overflow-y-auto p-6 space-y-4">
+                    {messages.length === 0 && (
+                      <div className="text-center py-12">
+                        <Brain className="w-16 h-16 text-purple-500/50 mx-auto mb-4" />
+                        <h2 className="text-xl font-semibold text-purple-400 mb-2">Code Homie AI Demo</h2>
+                        <p className="text-purple-500/70 text-sm mb-6">
+                          Try our AI assistant! Sign up for full access to advanced features.
+                        </p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-w-2xl mx-auto">
+                          <div className="bg-gray-800/30 border border-purple-500/20 rounded-lg p-3 text-left">
+                            <p className="text-sm text-purple-300 font-semibold mb-1">💡 Get Code Examples</p>
+                            <p className="text-xs text-gray-400">"Show me a React component for a login form"</p>
+                          </div>
+                          <div className="bg-gray-800/30 border border-cyan-500/20 rounded-lg p-3 text-left">
+                            <p className="text-sm text-cyan-300 font-semibold mb-1">🚀 Debug Issues</p>
+                            <p className="text-xs text-gray-400">"Help me fix this JavaScript error"</p>
+                          </div>
+                          <div className="bg-gray-800/30 border border-pink-500/20 rounded-lg p-3 text-left">
+                            <p className="text-sm text-pink-300 font-semibold mb-1">🎯 Learn Concepts</p>
+                            <p className="text-xs text-gray-400">"Explain async/await in simple terms"</p>
+                          </div>
+                          <div className="bg-gray-800/30 border border-green-500/20 rounded-lg p-3 text-left">
+                            <p className="text-sm text-green-300 font-semibold mb-1">⚡ Optimize Code</p>
+                            <p className="text-xs text-gray-400">"How can I make this function faster?"</p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {messages.map((message) => (
+                      <div
+                        key={message.id}
+                        className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
+                      >
+                        <div
+                          className={`max-w-[80%] p-4 rounded-lg ${
+                            message.role === "user"
+                              ? "bg-gradient-to-r from-purple-600/20 to-cyan-600/20 border border-purple-500/40 text-purple-100"
+                              : "bg-gray-800/50 border border-purple-500/20 text-gray-100"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className="text-xs font-semibold text-purple-400">
+                              {message.role === "user" ? "[USER]" : "[CODE HOMIE]"}
+                            </span>
+                            <span className="text-xs text-purple-500/50">{new Date().toLocaleTimeString()}</span>
+                          </div>
+                          <div className="whitespace-pre-wrap text-sm leading-relaxed">{message.content}</div>
+                        </div>
+                      </div>
+                    ))}
+
+                    {isTyping && (
+                      <div className="flex justify-start">
+                        <div className="bg-gray-800/50 border border-purple-500/20 text-gray-100 max-w-[80%] p-4 rounded-lg">
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className="text-xs font-semibold text-purple-400">[CODE HOMIE]</span>
+                            <span className="text-xs text-purple-500/50">{new Date().toLocaleTimeString()}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm">Thinking</span>
+                            <div className="flex gap-1">
+                              <div className="w-1 h-1 bg-purple-400 rounded-full animate-pulse"></div>
+                              <div className="w-1 h-1 bg-purple-400 rounded-full animate-pulse delay-100"></div>
+                              <div className="w-1 h-1 bg-purple-400 rounded-full animate-pulse delay-200"></div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    <div ref={messagesEndRef} />
+                  </div>
+
+                  {/* Input Form */}
+                  <div className="border-t border-purple-500/30 p-6">
+                    <form onSubmit={handleSubmit} className="flex gap-3">
+                      <div className="flex-1 relative">
+                        <input
+                          value={input}
+                          onChange={handleInputChange}
+                          placeholder="Try asking Code Homie something... (Demo mode - Sign up for full access)"
+                          className="w-full bg-gray-800/50 border border-purple-500/30 rounded-lg px-4 py-3 text-purple-100 placeholder-purple-500/50 focus:outline-none focus:border-purple-400 focus:ring-1 focus:ring-purple-400/50"
+                          disabled={isLoading}
+                        />
+                        <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                          <Zap className="w-4 h-4 text-purple-500/50" />
+                        </div>
+                      </div>
+                      <button
+                        type="submit"
+                        disabled={isLoading || !input.trim()}
+                        className="bg-gradient-to-r from-purple-600 to-cyan-600 hover:from-purple-500 hover:to-cyan-500 text-white px-6 py-3 rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-lg shadow-purple-500/25"
+                      >
+                        <Send className="w-4 h-4" />
+                        <span className="hidden sm:inline">SEND</span>
+                      </button>
+                    </form>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
       </main>
 
