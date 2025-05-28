@@ -3,8 +3,9 @@
 import type React from "react"
 
 import { useState, useRef, useCallback } from "react"
-import { Mic, MicOff, Camera, Upload, Video, ImageIcon, Wand2, Brain, Code, Zap, Square } from "lucide-react"
+import { Mic, Camera, Upload, Video, ImageIcon, Wand2, Brain, Code, Zap, Square } from "lucide-react"
 import { multiModalEngine, type VoiceCommand } from "@/lib/multi-modal-engine"
+import VoiceInterface from "./voice-interface"
 
 interface MultiModalInterfaceProps {
   onCodeGenerated: (code: string | Record<string, string>) => void
@@ -26,29 +27,6 @@ export default function MultiModalInterface({
   const fileInputRef = useRef<HTMLInputElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
-
-  // Voice Command Handling
-  const startVoiceListening = useCallback(async () => {
-    try {
-      setIsListening(true)
-      setActiveMode("voice")
-
-      await multiModalEngine.startVoiceListening((command) => {
-        console.log("Voice command received:", command)
-        onVoiceCommand(command)
-      })
-    } catch (error) {
-      console.error("Voice listening failed:", error)
-      setIsListening(false)
-      setActiveMode(null)
-    }
-  }, [onVoiceCommand])
-
-  const stopVoiceListening = useCallback(() => {
-    multiModalEngine.stopVoiceListening()
-    setIsListening(false)
-    setActiveMode(null)
-  }, [])
 
   // File Upload Handling
   const handleFileUpload = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
@@ -174,18 +152,14 @@ export default function MultiModalInterface({
       {/* Input Methods */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         {/* Voice Commands */}
-        <button
-          onClick={isListening ? stopVoiceListening : startVoiceListening}
-          className={`flex flex-col items-center gap-2 p-4 rounded-lg border transition-all ${
-            activeMode === "voice"
-              ? "bg-purple-500/20 border-purple-500/40 text-purple-300"
-              : "bg-gray-800/50 border-green-500/30 hover:border-green-400 text-green-400"
-          }`}
-        >
-          {isListening ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
-          <span className="text-sm font-semibold">{isListening ? "Stop Listening" : "Voice Commands"}</span>
-          <span className="text-xs opacity-70">{isListening ? "Listening..." : "Say commands"}</span>
-        </button>
+        <VoiceInterface
+          onVoiceCommand={onVoiceCommand}
+          onSpeechResponse={(text) => {
+            // Optionally handle speech responses
+            console.log("AI Response:", text)
+          }}
+          className="col-span-full"
+        />
 
         {/* Camera Capture */}
         <button
