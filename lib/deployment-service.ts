@@ -6,6 +6,14 @@ export class DeploymentService {
 
   async deployToVercel(request: DeploymentRequest): Promise<DeploymentResult> {
     try {
+      // Check if required environment variables exist
+      if (!process.env.GITHUB_TOKEN) {
+        throw new Error("GITHUB_TOKEN environment variable is not set")
+      }
+      if (!process.env.VERCEL_TOKEN) {
+        throw new Error("VERCEL_TOKEN environment variable is not set")
+      }
+
       // Step 1: Create GitHub repository
       const githubRepo = await this.createGitHubRepo(request.projectName, request.requestId)
 
@@ -37,6 +45,7 @@ export class DeploymentService {
       headers: {
         Authorization: `token ${process.env.GITHUB_TOKEN}`,
         "Content-Type": "application/json",
+        "User-Agent": "NEXUS-AI-Pipeline",
       },
       body: JSON.stringify({
         name: repoName,
@@ -47,7 +56,9 @@ export class DeploymentService {
     })
 
     if (!response.ok) {
-      throw new Error(`GitHub repo creation failed: ${response.statusText}`)
+      const errorData = await response.text()
+      console.error("GitHub API Error:", response.status, errorData)
+      throw new Error(`GitHub repo creation failed: ${response.status} ${response.statusText} - ${errorData}`)
     }
 
     return await response.json()
@@ -134,59 +145,72 @@ export class DeploymentService {
   }
 
   private async createVercelDeployment(repo: any, projectName: string): Promise<string> {
-    // Create Vercel project
-    const projectResponse = await fetch(`${this.VERCEL_API_URL}/v9/projects`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.VERCEL_TOKEN}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        name: repo.name,
-        gitRepository: {
-          type: "github",
-          repo: repo.full_name,
+    try {
+      // Create Vercel project
+      const projectResponse = await fetch(`${this.VERCEL_API_URL}/v9/projects`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.VERCEL_TOKEN}`,
+          "Content-Type": "application/json",
         },
-        framework: "nextjs",
-        buildCommand: "npm run build",
-        devCommand: "npm run dev",
-        installCommand: "npm install",
-        outputDirectory: ".next",
-      }),
-    })
-
-    if (!projectResponse.ok) {
-      throw new Error(`Vercel project creation failed: ${projectResponse.statusText}`)
-    }
-
-    const projectData = await projectResponse.json()
-
-    // Trigger deployment
-    const deploymentResponse = await fetch(`${this.VERCEL_API_URL}/v13/deployments`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.VERCEL_TOKEN}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        name: repo.name,
-        gitSource: {
-          type: "github",
-          repo: repo.full_name,
-          ref: "main",
-        },
-        projectSettings: {
+        body: JSON.stringify({
+          name: repo.name,
+          gitRepository: {
+            type: "github",
+            repo: repo.full_name,
+          },
           framework: "nextjs",
+          buildCommand: "npm run build",
+          devCommand: "npm run dev",
+          installCommand: "npm install",
+          outputDirectory: ".next",
+        }),
+      })
+
+      if (!projectResponse.ok) {
+        const errorText = await projectResponse.text()
+        console.error("Vercel project creation error:", projectResponse.status, errorText)
+        throw new Error(
+          `Vercel project creation failed: ${projectResponse.status} ${projectResponse.statusText} - ${errorText}`,
+        )
+      }
+
+      const projectData = await projectResponse.json()
+
+      // Trigger deployment
+      const deploymentResponse = await fetch(`${this.VERCEL_API_URL}/v13/deployments`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.VERCEL_TOKEN}`,
+          "Content-Type": "application/json",
         },
-      }),
-    })
+        body: JSON.stringify({
+          name: repo.name,
+          gitSource: {
+            type: "github",
+            repo: repo.full_name,
+            ref: "main",
+          },
+          projectSettings: {
+            framework: "nextjs",
+          },
+        }),
+      })
 
-    if (!deploymentResponse.ok) {
-      throw new Error(`Vercel deployment failed: ${deploymentResponse.statusText}`)
+      if (!deploymentResponse.ok) {
+        const errorText = await deploymentResponse.text()
+        console.error("Vercel deployment error:", deploymentResponse.status, errorText)
+        throw new Error(
+          `Vercel deployment failed: ${deploymentResponse.status} ${deploymentResponse.statusText} - ${errorText}`,
+        )
+      }
+
+      const deploymentData = await deploymentResponse.json()
+      return `https://${deploymentData.url}`
+    } catch (error) {
+      console.error("Vercel deployment process failed:", error)
+      throw error
     }
-
-    const deploymentData = await deploymentResponse.json()
-    return `https://${deploymentData.url}`
   }
 }
 

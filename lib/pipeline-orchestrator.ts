@@ -275,31 +275,20 @@ export class PipelineOrchestrator {
           try {
             const result = await searchEngine.search(searchQuery, {
               includeAnswer: true,
-              maxResults: 5,
-              searchDepth: "advanced",
+              maxResults: 8, // Increased for better knowledge coverage
+              searchDepth: "advanced", // Use advanced for better relevance
+              includeRawContent: false, // Don't need raw content for knowledge gathering
               includeDomains: [
                 "github.com",
                 "stackoverflow.com",
                 "nextjs.org",
                 "react.dev",
-                "tailwindcss.com",
-                "typescript-eslint.io",
                 "developer.mozilla.org",
-                "vuejs.org",
-                "angular.dev",
-                "svelte.dev",
-                "solidjs.com",
-                "flutter.dev",
-                "reactnative.dev",
-                "tauri.app",
-                "electronjs.org",
-                "rust-lang.org",
-                "go.dev",
-                "python.org",
-                "nodejs.org",
-                "deno.land",
-                "bun.sh",
+                "web.dev", // Google's web development best practices
+                "css-tricks.com", // CSS and frontend tips
+                "smashingmagazine.com", // Design and development insights
               ],
+              topic: "general",
             })
             return result
           } catch (error) {
@@ -335,85 +324,91 @@ export class PipelineOrchestrator {
   }
 
   private generateSearchQueries(userQuery: string, codeContext?: string): string[] {
-    const queries = []
+    // Extract key concepts and create focused sub-queries under 400 chars
+    const extractKeyTerms = (text: string): string[] => {
+      const words = text.toLowerCase().split(/\s+/)
+      const stopWords = new Set([
+        "and",
+        "or",
+        "the",
+        "a",
+        "an",
+        "in",
+        "on",
+        "at",
+        "to",
+        "for",
+        "with",
+        "by",
+        "about",
+        "like",
+        "how",
+        "what",
+        "when",
+        "where",
+        "why",
+        "create",
+        "build",
+        "make",
+        "develop",
+        "implement",
+        "generate",
+        "design",
+        "write",
+        "website",
+        "landing",
+        "page",
+      ])
 
-    // Base query with 2025 context
-    queries.push(`${userQuery} 2025 best practices`)
-
-    // Technology-specific queries for 2025
-    if (userQuery.toLowerCase().includes("react") || userQuery.toLowerCase().includes("component")) {
-      queries.push(`React 19 ${userQuery} 2025 patterns`)
-      queries.push(`modern React components ${userQuery} May 2025`)
+      return words.filter((word) => word.length > 2 && !stopWords.has(word)).slice(0, 2) // Only top 2 key terms
     }
 
-    if (userQuery.toLowerCase().includes("vue")) {
-      queries.push(`Vue 3.4 ${userQuery} 2025 composition API`)
+    const keyTerms = extractKeyTerms(userQuery)
+    const promptLower = userQuery.toLowerCase()
+    const queries: string[] = []
+
+    // Strategy: Create very focused, short queries for better AI knowledge retrieval
+
+    // 1. Technology-specific best practices (under 50 chars each)
+    if (promptLower.includes("react")) {
+      queries.push(`React 19 best practices 2025`)
+      queries.push(`React components modern patterns`)
+    } else if (promptLower.includes("vue")) {
+      queries.push(`Vue 3.4 composition API patterns`)
+    } else if (promptLower.includes("next")) {
+      queries.push(`Next.js 15 app router guide`)
+      queries.push(`Next.js performance optimization`)
+    } else if (promptLower.includes("flutter")) {
+      queries.push(`Flutter 3.24 best practices`)
+    } else if (promptLower.includes("python")) {
+      queries.push(`Python 3.13 modern development`)
+    } else {
+      // Generic web development query
+      queries.push(`${keyTerms[0]} web development 2025`)
     }
 
-    if (userQuery.toLowerCase().includes("angular")) {
-      queries.push(`Angular 18 ${userQuery} 2025 standalone components`)
+    // 2. Implementation examples (focused on code quality)
+    if (keyTerms.length > 0) {
+      queries.push(`${keyTerms[0]} code examples GitHub`)
     }
 
-    if (userQuery.toLowerCase().includes("svelte")) {
-      queries.push(`Svelte 5 ${userQuery} 2025 runes`)
+    // 3. Performance and security (if relevant)
+    if (promptLower.includes("performance") || promptLower.includes("fast") || promptLower.includes("speed")) {
+      queries.push(`web performance optimization 2025`)
     }
 
-    if (userQuery.toLowerCase().includes("solid")) {
-      queries.push(`SolidJS ${userQuery} 2025 fine-grained reactivity`)
+    if (promptLower.includes("secure") || promptLower.includes("auth") || promptLower.includes("login")) {
+      queries.push(`web security best practices 2025`)
     }
 
-    if (userQuery.toLowerCase().includes("next") || userQuery.toLowerCase().includes("website")) {
-      queries.push(`Next.js 15 ${userQuery} 2025 Turbopack`)
-      queries.push(`Next.js app router ${userQuery} May 2025`)
+    // 4. UI/UX specific queries for landing pages
+    if (promptLower.includes("landing") || promptLower.includes("homepage") || promptLower.includes("website")) {
+      queries.push(`modern landing page design trends`)
+      queries.push(`website UI best practices 2025`)
     }
 
-    if (userQuery.toLowerCase().includes("flutter")) {
-      queries.push(`Flutter 3.24 ${userQuery} 2025 Impeller`)
-    }
-
-    if (userQuery.toLowerCase().includes("react native")) {
-      queries.push(`React Native 0.75 ${userQuery} 2025 New Architecture`)
-    }
-
-    if (userQuery.toLowerCase().includes("tauri")) {
-      queries.push(`Tauri 2.0 ${userQuery} 2025 desktop apps`)
-    }
-
-    if (userQuery.toLowerCase().includes("rust")) {
-      queries.push(`Rust ${userQuery} 2025 latest features`)
-    }
-
-    if (userQuery.toLowerCase().includes("go") || userQuery.toLowerCase().includes("golang")) {
-      queries.push(`Go ${userQuery} 2025 generics patterns`)
-    }
-
-    if (userQuery.toLowerCase().includes("python")) {
-      queries.push(`Python 3.13 ${userQuery} 2025 performance`)
-    }
-
-    if (userQuery.toLowerCase().includes("node") || userQuery.toLowerCase().includes("javascript")) {
-      queries.push(`Node.js 22 ${userQuery} 2025 ESM`)
-    }
-
-    if (userQuery.toLowerCase().includes("deno")) {
-      queries.push(`Deno 2.0 ${userQuery} 2025 npm compatibility`)
-    }
-
-    if (userQuery.toLowerCase().includes("bun")) {
-      queries.push(`Bun ${userQuery} 2025 runtime performance`)
-    }
-
-    // GitHub and code examples with 2025 context
-    queries.push(`GitHub ${userQuery} examples 2025`)
-    queries.push(`${userQuery} code examples May 2025`)
-
-    // If we have code context, search for improvements
-    if (codeContext) {
-      queries.push(`improve ${userQuery} performance 2025`)
-      queries.push(`${userQuery} security best practices 2025`)
-    }
-
-    return queries.slice(0, 4) // Limit to 4 queries to avoid rate limits
+    // Ensure all queries are under 400 characters and limit to 3 for efficiency
+    return queries.map((query) => (query.length > 400 ? query.substring(0, 397) + "..." : query)).slice(0, 3)
   }
 
   private detectProjectType(prompt: string): string {

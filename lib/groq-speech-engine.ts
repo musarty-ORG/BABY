@@ -26,9 +26,26 @@ export class GroqSpeechEngine {
     })
   }
 
+  private async validateConnection(): Promise<boolean> {
+    try {
+      if (!process.env.GROQ_API_KEY) {
+        throw new Error("GROQ_API_KEY not configured")
+      }
+      return true
+    } catch (error) {
+      console.error("Groq connection validation failed:", error)
+      return false
+    }
+  }
+
   // Speech-to-Text (STT) using GROQ Whisper
   async startRecording(): Promise<void> {
     try {
+      const isConnected = await this.validateConnection()
+      if (!isConnected) {
+        throw new Error("Service connection not available")
+      }
+
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       this.mediaRecorder = new MediaRecorder(stream, {
         mimeType: "audio/webm;codecs=opus",
@@ -47,14 +64,20 @@ export class GroqSpeechEngine {
       console.log("🎤 Recording started...")
     } catch (error) {
       console.error("Failed to start recording:", error)
-      throw new Error("Microphone access denied or not available")
+      throw new Error("Microphone access denied or service unavailable")
     }
   }
 
   async stopRecording(): Promise<string> {
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
       if (!this.mediaRecorder || !this.isRecording) {
         reject(new Error("No active recording"))
+        return
+      }
+
+      const isConnected = await this.validateConnection()
+      if (!isConnected) {
+        reject(new Error("Service connection not available"))
         return
       }
 
@@ -80,6 +103,11 @@ export class GroqSpeechEngine {
 
   private async transcribeAudio(audioBlob: Blob): Promise<string> {
     try {
+      const isConnected = await this.validateConnection()
+      if (!isConnected) {
+        throw new Error("Service connection not available")
+      }
+
       // Convert blob to File for GROQ API
       const audioFile = new File([audioBlob], "recording.webm", { type: "audio/webm" })
 
@@ -104,6 +132,11 @@ export class GroqSpeechEngine {
     responseFormat: "mp3" | "wav" = "mp3",
   ): Promise<ArrayBuffer> {
     try {
+      const isConnected = await this.validateConnection()
+      if (!isConnected) {
+        throw new Error("Service connection not available")
+      }
+
       const response = await this.groq.audio.speech.create({
         model: "playai-tts",
         voice: voice as any,
@@ -120,6 +153,11 @@ export class GroqSpeechEngine {
 
   async speakText(text: string, voice = "Cheyenne-PlayAI"): Promise<void> {
     try {
+      const isConnected = await this.validateConnection()
+      if (!isConnected) {
+        throw new Error("Service connection not available")
+      }
+
       const audioBuffer = await this.synthesizeSpeech(text, voice)
       const audioBlob = new Blob([audioBuffer], { type: "audio/mp3" })
       const audioUrl = URL.createObjectURL(audioBlob)

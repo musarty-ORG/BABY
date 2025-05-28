@@ -29,6 +29,20 @@ export default function CodeHomieHome() {
     }
   }, [isLoading])
 
+  // Global error handler for unhandled promise rejections
+  useEffect(() => {
+    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+      console.warn("Unhandled promise rejection:", event.reason)
+      event.preventDefault() // Prevent the error from crashing the app
+    }
+
+    window.addEventListener("unhandledrejection", handleUnhandledRejection)
+
+    return () => {
+      window.removeEventListener("unhandledrejection", handleUnhandledRejection)
+    }
+  }, [])
+
   return (
     <div className="min-h-screen bg-black text-white font-mono overflow-hidden">
       {/* Animated Background */}
@@ -329,7 +343,12 @@ export default function CodeHomieHome() {
             <p className="text-purple-500/70 text-sm">
               Code Homie v2.1 | Powered by Llama 4 Scout & Maverick | Secure Neural Network
             </p>
-            <p className="text-purple-500/50 text-xs mt-2">HACK. STACK. HUSTLE. | Your Legendary AI Coding Companion</p>
+            <p className="text-purple-500/50 text-xs mt-2">
+              HACK. STACK. HUSTLE. | Your Legendary AI Coding Companion |{" "}
+              <Link href="/admin" className="text-purple-500/50 hover:text-purple-500/70">
+                Danger
+              </Link>
+            </p>
           </div>
         </div>
       </footer>

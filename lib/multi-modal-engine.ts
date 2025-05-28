@@ -208,9 +208,25 @@ export class MultiModalEngine {
     return params
   }
 
+  private async safeApiCall<T>(operation: () => Promise<T>, retries = 2): Promise<T | null> {
+    for (let i = 0; i <= retries; i++) {
+      try {
+        return await operation()
+      } catch (error) {
+        console.warn(`API call attempt ${i + 1} failed:`, error)
+        if (i === retries) {
+          console.error("All API call attempts failed")
+          return null
+        }
+        // Wait before retry
+        await new Promise((resolve) => setTimeout(resolve, 1000 * (i + 1)))
+      }
+    }
+    return null
+  }
+
   private async enhanceVoiceCommand(command: VoiceCommand): Promise<VoiceCommand> {
-    try {
-      const enhancementPrompt = `Analyze this voice command and enhance it with specific technical details:
+    const enhancementPrompt = `Analyze this voice command and enhance it with specific technical details:
 
 Command: "${command.transcript}"
 Intent: ${command.intent}
@@ -222,24 +238,26 @@ Focus on CSS properties, component modifications, or code changes needed.
 
 Return a JSON object with enhanced parameters.`
 
-      const result = await generateText({
+    const result = await this.safeApiCall(async () => {
+      return await generateText({
         model: groq("meta-llama/llama-4-scout-17b-16e-instruct"),
         prompt: enhancementPrompt,
-        system:
-          "You are a voice command interpreter for a code editor. Convert natural language to specific technical parameters.",
+        system: "You are a voice command interpreter for a code editor.",
       })
+    })
 
-      try {
-        const enhanced = JSON.parse(result.text)
-        return {
-          ...command,
-          parameters: { ...command.parameters, ...enhanced },
-        }
-      } catch {
-        return command
+    if (!result) {
+      console.warn("Voice command enhancement failed, using basic command")
+      return command
+    }
+
+    try {
+      const enhanced = JSON.parse(result.text)
+      return {
+        ...command,
+        parameters: { ...command.parameters, ...enhanced },
       }
-    } catch (error) {
-      console.error("Voice command enhancement failed:", error)
+    } catch {
       return command
     }
   }

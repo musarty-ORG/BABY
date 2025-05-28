@@ -3,14 +3,23 @@
 import { Redis } from "@upstash/redis"
 import { searchEngine } from "./search-engine"
 
-// Initialize Redis for behavior tracking
-const redis =
-  process.env.USE_LOCAL_REDIS === "true"
-    ? new Redis({ url: process.env.LOCAL_REDIS_URL || "redis://localhost:6379" })
-    : new Redis({
-        url: process.env.UPSTASH_REDIS_REST_URL!,
-        token: process.env.UPSTASH_REDIS_REST_TOKEN!,
-      })
+// Initialize Redis for behavior tracking with Upstash fromEnv() method
+const redis = (() => {
+  try {
+    if (process.env.USE_LOCAL_REDIS === "true") {
+      return new Redis({ url: process.env.LOCAL_REDIS_URL || "redis://localhost:6379" })
+    } else if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
+      // Use the recommended fromEnv() method for automatic environment variable loading
+      return Redis.fromEnv()
+    } else {
+      console.warn("Upstash Redis not configured properly. Missing UPSTASH_REDIS_REST_URL or UPSTASH_REDIS_REST_TOKEN")
+      return null
+    }
+  } catch (error) {
+    console.error("Upstash Redis initialization failed:", error)
+    return null
+  }
+})()
 
 export interface UserBehavior {
   userId: string
@@ -85,6 +94,11 @@ export class PredictiveEvolutionEngine {
 
   // Behavior Learning System
   async trackUserBehavior(behavior: UserBehavior): Promise<void> {
+    if (!redis) {
+      console.warn("Redis not available, skipping behavior tracking")
+      return
+    }
+
     try {
       const behaviorKey = `behavior:${behavior.userId}:${Date.now()}`
       const patternKey = `patterns:${behavior.userId}:${behavior.context.projectType}`
@@ -94,7 +108,16 @@ export class PredictiveEvolutionEngine {
 
       // Update behavior patterns
       const existingPatterns = await redis.get(patternKey)
-      const patterns = existingPatterns ? JSON.parse(existingPatterns as string) : {}
+      let patterns = {}
+
+      if (existingPatterns) {
+        try {
+          patterns = JSON.parse(existingPatterns as string)
+        } catch (parseError) {
+          console.warn("Failed to parse existing patterns, starting fresh:", parseError)
+          patterns = {}
+        }
+      }
 
       if (!patterns[behavior.action]) {
         patterns[behavior.action] = { count: 0, successRate: 0, avgTime: 0 }
@@ -114,6 +137,7 @@ export class PredictiveEvolutionEngine {
       console.log(`Tracked behavior: ${behavior.action} for user ${behavior.userId}`)
     } catch (error) {
       console.error("Failed to track user behavior:", error)
+      // Don't throw error, just log it so the main functionality continues
     }
   }
 
@@ -675,12 +699,23 @@ export class PredictiveEvolutionEngine {
   private async generateBehaviorBasedInsights(userId: string, projectType: string): Promise<PredictiveInsight[]> {
     const insights: PredictiveInsight[] = []
 
+    if (!redis) {
+      console.warn("Redis not available, skipping behavior-based insights")
+      return insights
+    }
+
     try {
       const patternKey = `patterns:${userId}:${projectType}`
       const patterns = await redis.get(patternKey)
 
       if (patterns) {
-        const behaviorData = JSON.parse(patterns as string)
+        let behaviorData
+        try {
+          behaviorData = JSON.parse(patterns as string)
+        } catch (parseError) {
+          console.warn("Failed to parse behavior patterns:", parseError)
+          return insights
+        }
 
         // Analyze patterns for insights
         for (const [action, data] of Object.entries(behaviorData as any)) {
@@ -701,6 +736,7 @@ export class PredictiveEvolutionEngine {
       }
     } catch (error) {
       console.error("Behavior-based insights generation failed:", error)
+      // Return empty insights instead of throwing
     }
 
     return insights

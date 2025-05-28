@@ -73,8 +73,11 @@ export class SearchEngine {
   ): Promise<SearchResponse> {
     const startTime = Date.now()
 
-    // Generate cache key
-    const cacheKey = this.generateCacheKey(query, options)
+    // Optimize query for Tavily API (max 400 chars)
+    const optimizedQuery = this.optimizeQueryForTavily(query)
+
+    // Generate cache key with optimized query
+    const cacheKey = this.generateCacheKey(optimizedQuery, options)
 
     try {
       // Check cache first
@@ -88,7 +91,7 @@ export class SearchEngine {
       }
 
       // Perform Tavily search
-      const searchResult = await this.performTavilySearch(query, options)
+      const searchResult = await this.performTavilySearch(optimizedQuery, options)
 
       // Cache the result
       await this.cacheResult(cacheKey, searchResult)
@@ -104,8 +107,76 @@ export class SearchEngine {
     }
   }
 
+  // Optimize query specifically for Tavily API best practices
+  private optimizeQueryForTavily(query: string): string {
+    if (query.length <= 400) {
+      return query
+    }
+
+    console.log(`Query too long (${query.length} chars), optimizing for Tavily...`)
+
+    // Strategy 1: Extract key technical terms and concepts
+    const techTerms =
+      query.match(
+        /\b(react|vue|angular|next\.?js|typescript|javascript|css|html|api|database|auth|performance|security|ui|ux|responsive|mobile|desktop)\b/gi,
+      ) || []
+    const actionWords = query.match(/\b(create|build|develop|implement|design|optimize|secure)\b/gi) || []
+
+    // Strategy 2: Identify the main request
+    let coreRequest = ""
+    if (query.includes("landing page") || query.includes("homepage")) {
+      coreRequest = "landing page"
+    } else if (query.includes("website")) {
+      coreRequest = "website"
+    } else if (query.includes("component")) {
+      coreRequest = "component"
+    } else if (query.includes("app")) {
+      coreRequest = "app"
+    }
+
+    // Strategy 3: Build optimized query
+    const optimizedParts = []
+
+    if (actionWords.length > 0) {
+      optimizedParts.push(actionWords[0])
+    }
+
+    if (coreRequest) {
+      optimizedParts.push(coreRequest)
+    }
+
+    if (techTerms.length > 0) {
+      optimizedParts.push(...techTerms.slice(0, 2)) // Max 2 tech terms
+    }
+
+    optimizedParts.push("best practices 2025")
+
+    const optimized = optimizedParts.join(" ")
+
+    // Final length check
+    if (optimized.length <= 400) {
+      return optimized
+    }
+
+    // Fallback: Simple truncation with smart breaking
+    const words = query.split(/\s+/)
+    let truncated = ""
+
+    for (const word of words) {
+      const potential = truncated + (truncated ? " " : "") + word
+      if (potential.length <= 397) {
+        // Leave room for "..."
+        truncated = potential
+      } else {
+        break
+      }
+    }
+
+    return truncated + (truncated.length < query.length ? "..." : "")
+  }
+
   private async performTavilySearch(
-    query: string,
+    optimizedQuery: string,
     options: {
       includeAnswer?: boolean
       includeImages?: boolean
@@ -128,28 +199,30 @@ export class SearchEngine {
       ? process.env.TAVILY_API_KEY
       : `tvly-${process.env.TAVILY_API_KEY}`
 
-    // Validate search depth and max results for advanced search
-    const maxResults = options.maxResults || this.MAX_RESULTS
-    if (options.searchDepth === "advanced" && maxResults > 20) {
-      throw new Error("Advanced search depth allows maximum 20 results")
-    }
+    // Validate and optimize parameters based on Tavily best practices
+    const maxResults = Math.min(
+      options.maxResults || 8, // Increased default for better knowledge
+      options.searchDepth === "advanced" ? 15 : 20, // Optimized limits
+    )
 
-    // Validate topic and days parameter
-    if (options.topic === "news" && !options.days) {
-      options.days = 7 // Default to 7 days for news search
-    }
-
+    // Use time_range for recent information when relevant
     const requestBody = {
-      query,
+      query: optimizedQuery, // Use the optimized query
       topic: options.topic || "general",
-      search_depth: options.searchDepth || "basic",
+      search_depth: options.searchDepth || "advanced", // Default to advanced for better relevance
       include_answer: options.includeAnswer ?? true,
       include_images: options.includeImages ?? false,
       include_raw_content: options.includeRawContent ?? false,
-      max_results: Math.min(maxResults, options.searchDepth === "advanced" ? 20 : 50),
-      include_domains: options.includeDomains,
-      exclude_domains: options.excludeDomains,
+      max_results: maxResults,
+      ...(options.includeDomains && { include_domains: options.includeDomains }),
+      ...(options.excludeDomains && { exclude_domains: options.excludeDomains }),
       ...(options.topic === "news" && options.days && { days: options.days }),
+      // Add time_range for development-related queries to get recent info
+      ...(optimizedQuery.toLowerCase().includes("2025") ||
+      optimizedQuery.toLowerCase().includes("latest") ||
+      optimizedQuery.toLowerCase().includes("modern")
+        ? { time_range: "month" }
+        : {}),
     }
 
     // Remove undefined values

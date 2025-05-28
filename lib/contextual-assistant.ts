@@ -2,13 +2,22 @@ import { groq } from "@ai-sdk/groq"
 import { generateText } from "ai"
 import { Redis } from "@upstash/redis"
 
-const redis =
-  process.env.USE_LOCAL_REDIS === "true"
-    ? new Redis({ url: process.env.LOCAL_REDIS_URL || "redis://localhost:6379" })
-    : new Redis({
-        url: process.env.UPSTASH_REDIS_REST_URL!,
-        token: process.env.UPSTASH_REDIS_REST_TOKEN!,
-      })
+const redis = (() => {
+  try {
+    if (process.env.USE_LOCAL_REDIS === "true") {
+      return new Redis({ url: process.env.LOCAL_REDIS_URL || "redis://localhost:6379" })
+    } else if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
+      // Use the recommended fromEnv() method
+      return Redis.fromEnv()
+    } else {
+      console.warn("Upstash Redis environment variables not found")
+      return null
+    }
+  } catch (error) {
+    console.error("Upstash Redis initialization failed:", error)
+    return null
+  }
+})()
 
 export interface ProjectContext {
   id: string
