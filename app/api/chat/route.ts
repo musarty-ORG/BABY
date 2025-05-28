@@ -17,6 +17,7 @@ export async function POST(req: Request) {
   let realTimeContext = ""
   if (
     latestMessage &&
+    process.env.TAVILY_API_KEY && // Only search if API key is available
     (latestMessage.toLowerCase().includes("code") ||
       latestMessage.toLowerCase().includes("component") ||
       latestMessage.toLowerCase().includes("react") ||
@@ -62,7 +63,8 @@ export async function POST(req: Request) {
         realTimeContext += `=== END REAL-TIME KNOWLEDGE ===\n\n`
       }
     } catch (error) {
-      console.warn("Real-time search failed in chat:", error)
+      console.warn("Real-time search failed in chat, continuing without search:", error)
+      // Continue without search context - don't break the chat
     }
   }
 

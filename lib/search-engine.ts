@@ -67,6 +67,8 @@ export class SearchEngine {
       searchDepth?: "basic" | "advanced"
       includeDomains?: string[]
       excludeDomains?: string[]
+      topic?: "general" | "news"
+      days?: number
     } = {},
   ): Promise<SearchResponse> {
     const startTime = Date.now()
@@ -112,37 +114,88 @@ export class SearchEngine {
       searchDepth?: "basic" | "advanced"
       includeDomains?: string[]
       excludeDomains?: string[]
+      topic?: "general" | "news"
+      days?: number
     },
   ): Promise<Omit<SearchResponse, "searchTime" | "cached">> {
+    // Validate API key format
+    if (!process.env.TAVILY_API_KEY) {
+      throw new Error("TAVILY_API_KEY environment variable is not set")
+    }
+
+    // Ensure API key has the correct format
+    const apiKey = process.env.TAVILY_API_KEY.startsWith("tvly-")
+      ? process.env.TAVILY_API_KEY
+      : `tvly-${process.env.TAVILY_API_KEY}`
+
+    // Validate search depth and max results for advanced search
+    const maxResults = options.maxResults || this.MAX_RESULTS
+    if (options.searchDepth === "advanced" && maxResults > 20) {
+      throw new Error("Advanced search depth allows maximum 20 results")
+    }
+
+    // Validate topic and days parameter
+    if (options.topic === "news" && !options.days) {
+      options.days = 7 // Default to 7 days for news search
+    }
+
     const requestBody = {
-      api_key: process.env.TAVILY_API_KEY,
       query,
+      topic: options.topic || "general",
       search_depth: options.searchDepth || "basic",
       include_answer: options.includeAnswer ?? true,
       include_images: options.includeImages ?? false,
       include_raw_content: options.includeRawContent ?? false,
-      max_results: Math.min(options.maxResults || this.MAX_RESULTS, 20),
+      max_results: Math.min(maxResults, options.searchDepth === "advanced" ? 20 : 50),
       include_domains: options.includeDomains,
       exclude_domains: options.excludeDomains,
+      ...(options.topic === "news" && options.days && { days: options.days }),
     }
+
+    // Remove undefined values
+    Object.keys(requestBody).forEach((key) => {
+      if (requestBody[key as keyof typeof requestBody] === undefined) {
+        delete requestBody[key as keyof typeof requestBody]
+      }
+    })
+
+    console.log("Tavily API Request:", {
+      url: this.TAVILY_API_URL,
+      body: requestBody,
+      apiKeyFormat: apiKey.substring(0, 10) + "...",
+    })
 
     const response = await fetch(this.TAVILY_API_URL, {
       method: "POST",
       headers: {
+        Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify(requestBody),
     })
 
     if (!response.ok) {
-      throw new Error(`Tavily API error: ${response.status} ${response.statusText}`)
+      const errorText = await response.text()
+      console.error("Tavily API Error Response:", {
+        status: response.status,
+        statusText: response.statusText,
+        body: errorText,
+      })
+      throw new Error(`Tavily API error: ${response.status} ${response.statusText} - ${errorText}`)
     }
 
     const data: TavilyResponse = await response.json()
 
+    console.log("Tavily API Success:", {
+      query: data.query,
+      resultCount: data.results?.length || 0,
+      hasAnswer: !!data.answer,
+      responseTime: data.response_time,
+    })
+
     return {
       query: data.query,
-      results: data.results.map((result) => ({
+      results: (data.results || []).map((result) => ({
         title: result.title,
         url: result.url,
         content: result.content,
@@ -268,6 +321,33 @@ export class SearchEngine {
         totalCachedQueries: 0,
         cacheHitRate: 0,
         popularQueries: [],
+      }
+    }
+  }
+
+  // Test method to validate API connection
+  async testConnection(): Promise<{ success: boolean; message: string; details?: any }> {
+    try {
+      const testResult = await this.search("test query", {
+        maxResults: 1,
+        searchDepth: "basic",
+        includeAnswer: false,
+      })
+
+      return {
+        success: true,
+        message: "Tavily API connection successful",
+        details: {
+          resultCount: testResult.results.length,
+          searchTime: testResult.searchTime,
+          cached: testResult.cached,
+        },
+      }
+    } catch (error) {
+      return {
+        success: false,
+        message: `Tavily API connection failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+        details: { error: error instanceof Error ? error.stack : error },
       }
     }
   }

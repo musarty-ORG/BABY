@@ -260,6 +260,12 @@ export class PipelineOrchestrator {
   }
 
   private async searchRealTimeKnowledge(query: string, codeContext?: string): Promise<string> {
+    // Check if search is available
+    if (!process.env.TAVILY_API_KEY) {
+      console.warn("Tavily API key not available, using fallback knowledge")
+      return ""
+    }
+
     try {
       // Create search queries based on the request with 2025 context
       const searchQueries = this.generateSearchQueries(query, codeContext)

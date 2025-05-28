@@ -15,6 +15,8 @@ export async function POST(req: NextRequest) {
       searchDepth = "basic",
       includeDomains,
       excludeDomains,
+      topic = "general",
+      days,
     } = body
 
     if (!query || typeof query !== "string") {
@@ -22,7 +24,27 @@ export async function POST(req: NextRequest) {
     }
 
     if (!process.env.TAVILY_API_KEY) {
-      return Response.json({ error: "Search service not configured" }, { status: 500 })
+      return Response.json({ error: "Search service not configured - TAVILY_API_KEY missing" }, { status: 500 })
+    }
+
+    // Validate search depth and max results
+    if (searchDepth === "advanced" && maxResults > 20) {
+      return Response.json(
+        {
+          error: "Advanced search depth allows maximum 20 results",
+        },
+        { status: 400 },
+      )
+    }
+
+    // Validate topic and days
+    if (topic === "news" && days && (days < 1 || days > 30)) {
+      return Response.json(
+        {
+          error: "Days parameter for news search must be between 1 and 30",
+        },
+        { status: 400 },
+      )
     }
 
     const result = await searchEngine.search(query, {
@@ -33,6 +55,8 @@ export async function POST(req: NextRequest) {
       searchDepth,
       includeDomains,
       excludeDomains,
+      topic,
+      days,
     })
 
     return Response.json(result)
@@ -62,6 +86,8 @@ export async function GET(req: NextRequest) {
       includeImages: searchParams.get("images") === "true",
       maxResults: Number.parseInt(searchParams.get("limit") || "10"),
       searchDepth: (searchParams.get("depth") as "basic" | "advanced") || "basic",
+      topic: (searchParams.get("topic") as "general" | "news") || "general",
+      days: searchParams.get("days") ? Number.parseInt(searchParams.get("days")) : undefined,
     })
 
     return Response.json(result)
