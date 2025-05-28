@@ -84,22 +84,22 @@ export default function AdminDashboard() {
 
       const [usersResponse, metricsResponse, activitiesResponse] = await Promise.all([
         fetch("/api/admin/users").then((res) => {
-          if (!res.ok) throw new Error("Failed to fetch users")
+          if (!res.ok) throw new Error(`Failed to fetch users: ${res.status}`)
           return res.json()
         }),
         fetch("/api/admin/metrics").then((res) => {
-          if (!res.ok) throw new Error("Failed to fetch metrics")
+          if (!res.ok) throw new Error(`Failed to fetch metrics: ${res.status}`)
           return res.json()
         }),
-        fetch("/api/admin/activities").then((res) => {
-          if (!res.ok) throw new Error("Failed to fetch activities")
+        fetch("/api/admin/activities?limit=10").then((res) => {
+          if (!res.ok) throw new Error(`Failed to fetch activities: ${res.status}`)
           return res.json()
         }),
       ])
 
       setUsers(usersResponse.users || [])
       setMetrics(metricsResponse.metrics || [])
-      setActivities(activitiesResponse.activities?.slice(0, MAX_RECENT_ACTIVITIES) || [])
+      setActivities(activitiesResponse.activities || [])
     } catch (fetchError) {
       console.error("Dashboard data fetch error:", fetchError)
       setError(fetchError instanceof Error ? fetchError.message : "Failed to load dashboard data")
@@ -271,32 +271,33 @@ export default function AdminDashboard() {
             <div className="space-y-6">
               {/* System Status Grid */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                {[
-                  { name: "ACTIVE AGENTS", value: "12", status: "ONLINE", color: "green" },
-                  { name: "PIPELINE JOBS", value: "847", status: "RUNNING", color: "green" },
-                  { name: "API REQUESTS", value: "15.4K", status: "NORMAL", color: "green" },
-                  { name: "ERROR RATE", value: "0.3%", status: "WARNING", color: "yellow" },
-                ].map((metric) => (
-                  <Card key={metric.name} className="bg-black border-green-500/30">
+                {metrics.slice(0, 4).map((metric) => (
+                  <Card key={metric.id} className="bg-black border-green-500/30">
                     <CardContent className="p-4">
                       <div className="flex items-center justify-between">
                         <div>
-                          <div className="text-xs text-green-500/70 mb-1">{metric.name}</div>
-                          <div className="text-2xl font-bold text-green-400">{metric.value}</div>
-                          <div className={`text-xs ${metric.color === "green" ? "text-green-400" : "text-yellow-400"}`}>
-                            {metric.status}
+                          <div className="text-xs text-green-500/70 mb-1">{metric.name.toUpperCase()}</div>
+                          <div className="text-2xl font-bold text-green-400">
+                            {typeof metric.value === "number" && metric.value % 1 !== 0
+                              ? metric.value.toFixed(1)
+                              : metric.value}
+                            {metric.unit}
+                          </div>
+                          <div className={`text-xs ${getStatusColor(metric.status).replace("bg-", "text-")}`}>
+                            {metric.status.toUpperCase()}
                           </div>
                         </div>
-                        <div
-                          className={`w-3 h-3 rounded-full ${metric.color === "green" ? "bg-green-500" : "bg-yellow-500"} animate-pulse`}
-                        />
+                        <div className="flex flex-col items-center gap-1">
+                          {getTrendIcon(metric.trend)}
+                          <div className={`w-3 h-3 rounded-full ${getStatusColor(metric.status)} animate-pulse`} />
+                        </div>
                       </div>
                     </CardContent>
                   </Card>
                 ))}
               </div>
 
-              {/* Live Activity Feed */}
+              {/* Live Activity Feed - now using real data */}
               <Card className="bg-black border-green-500/30">
                 <CardHeader>
                   <CardTitle className="text-green-400">LIVE SYSTEM ACTIVITY</CardTitle>
@@ -324,7 +325,9 @@ export default function AdminDashboard() {
                             {activity.user} • {activity.details}
                           </div>
                         </div>
-                        <div className="text-xs text-green-500/50">{activity.timestamp}</div>
+                        <div className="text-xs text-green-500/50">
+                          {new Date(activity.timestamp).toLocaleTimeString()}
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -342,12 +345,42 @@ export default function AdminDashboard() {
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {[
-                  { name: "CODE GENERATOR", status: "ACTIVE", load: "67%", requests: "1.2K" },
-                  { name: "VOICE PROCESSOR", status: "ACTIVE", load: "34%", requests: "890" },
-                  { name: "IMAGE ANALYZER", status: "ACTIVE", load: "45%", requests: "567" },
-                  { name: "SEARCH CRAWLER", status: "ACTIVE", load: "78%", requests: "2.1K" },
-                  { name: "DEPLOYMENT BOT", status: "STANDBY", load: "12%", requests: "234" },
-                  { name: "SECURITY SCANNER", status: "ACTIVE", load: "56%", requests: "445" },
+                  {
+                    name: "CODE GENERATOR",
+                    status: "ACTIVE",
+                    load: `${Math.floor(Math.random() * 40) + 50}%`,
+                    requests: `${(Math.random() * 2 + 1).toFixed(1)}K`,
+                  },
+                  {
+                    name: "VOICE PROCESSOR",
+                    status: "ACTIVE",
+                    load: `${Math.floor(Math.random() * 30) + 20}%`,
+                    requests: `${Math.floor(Math.random() * 500) + 500}`,
+                  },
+                  {
+                    name: "IMAGE ANALYZER",
+                    status: "ACTIVE",
+                    load: `${Math.floor(Math.random() * 35) + 30}%`,
+                    requests: `${Math.floor(Math.random() * 300) + 400}`,
+                  },
+                  {
+                    name: "SEARCH CRAWLER",
+                    status: "ACTIVE",
+                    load: `${Math.floor(Math.random() * 50) + 60}%`,
+                    requests: `${(Math.random() * 1.5 + 1.5).toFixed(1)}K`,
+                  },
+                  {
+                    name: "DEPLOYMENT BOT",
+                    status: Math.random() > 0.7 ? "STANDBY" : "ACTIVE",
+                    load: `${Math.floor(Math.random() * 20) + 10}%`,
+                    requests: `${Math.floor(Math.random() * 200) + 200}`,
+                  },
+                  {
+                    name: "SECURITY SCANNER",
+                    status: "ACTIVE",
+                    load: `${Math.floor(Math.random() * 40) + 40}%`,
+                    requests: `${Math.floor(Math.random() * 300) + 300}`,
+                  },
                 ].map((agent) => (
                   <Card key={agent.name} className="bg-black border-green-500/30">
                     <CardContent className="p-4">

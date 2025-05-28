@@ -5,69 +5,63 @@ import type { PipelineRequest } from "@/types/pipeline"
 import { groq } from "@ai-sdk/groq"
 import { streamText } from "ai"
 import { searchEngine } from "@/lib/search-engine"
+import { withErrorHandler } from "@/lib/error-handler"
+import { multiAgentRequestSchema } from "@/lib/validation-schemas"
+import { requireAuth, checkRateLimit } from "@/lib/auth-middleware"
+import { analyticsEngine } from "@/lib/analytics-engine"
 
 export const maxDuration = 60
 
-export async function POST(req: NextRequest) {
+export const POST = withErrorHandler(async (req: NextRequest) => {
   const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
 
-  try {
-    // Check if GROQ_API_KEY is available
-    if (!process.env.GROQ_API_KEY) {
-      throw new Error("GROQ_API_KEY environment variable is missing")
-    }
+  // Authenticate user
+  const session = await requireAuth(req)
 
-    const body = await req.json()
-    const { prompt, agentMode, codeToReview, maxRetries = 3, fileUrl, mode, stylePreferences } = body
-
-    const request: PipelineRequest = {
-      requestId,
-      prompt,
-      agentMode,
-      mode,
-      codeToReview,
-      fileUrl,
-      stylePreferences,
-      maxRetries,
-      timestamp: new Date().toISOString(),
-    }
-
-    await pipelineLogger.logStage(requestId, "API_REQUEST", request, null, 0)
-
-    switch (agentMode) {
-      case "code-gen":
-        return await handleCodeGeneration(request)
-
-      case "review":
-        return await handleCodeReview(request)
-
-      case "full-pipeline":
-        return await handleFullPipeline(request)
-
-      default:
-        throw new Error("Invalid agent mode")
-    }
-  } catch (error) {
-    await pipelineLogger.logError(requestId, "ORCHESTRATION", `API request failed: ${error}`, false)
-
-    return Response.json(
-      {
-        error: "Pipeline request failed",
-        details: error instanceof Error ? error.message : "Unknown error",
-        requestId,
-        timestamp: new Date().toISOString(),
-        availableEnvVars: {
-          GROQ_API_KEY: !!process.env.GROQ_API_KEY,
-          GITHUB_TOKEN: !!process.env.GITHUB_TOKEN,
-          VERCEL_TOKEN: !!process.env.VERCEL_TOKEN,
-        },
-      },
-      { status: 500 },
-    )
+  // Rate limiting - 20 pipeline requests per hour for regular users
+  if (session.authType !== "api_key") {
+    await checkRateLimit(req, session.id, 20, 3600)
   }
-}
 
-async function handleCodeGeneration(request: PipelineRequest) {
+  // Check if GROQ_API_KEY is available
+  if (!process.env.GROQ_API_KEY) {
+    throw new Error("GROQ_API_KEY environment variable is missing")
+  }
+
+  const validatedBody = multiAgentRequestSchema.parse(await req.json())
+  const { prompt, agentMode, codeToReview, maxRetries = 3, fileUrl, mode, stylePreferences } = validatedBody
+
+  const request: PipelineRequest = {
+    requestId,
+    prompt,
+    agentMode,
+    mode,
+    codeToReview,
+    fileUrl,
+    stylePreferences,
+    maxRetries,
+    timestamp: new Date().toISOString(),
+    userId: session.id, // Add user tracking
+  }
+
+  await pipelineLogger.logStage(requestId, "API_REQUEST", request, null, 0)
+
+  switch (agentMode) {
+    case "code-gen":
+      return await handleCodeGeneration(request, session)
+
+    case "review":
+      return await handleCodeReview(request, session)
+
+    case "full-pipeline":
+      return await handleFullPipeline(request, session)
+
+    default:
+      throw new Error("Invalid agent mode")
+  }
+})
+
+async function handleCodeGeneration(request: PipelineRequest, session: any) {
   try {
     // Get real-time knowledge for code generation
     let realTimeKnowledge = ""
@@ -134,6 +128,16 @@ Generate the code without explanations, just the code:`
         "You are v0-1.0-md, a code generation specialist with real-time knowledge access. Use modern patterns and current best practices. Output only clean, functional code.",
     })
 
+    // Track code generation
+    await analyticsEngine.trackEvent({
+      type: "api_call",
+      endpoint: "/api/multi-agent/code-gen",
+      method: "POST",
+      status_code: 200,
+      user_id: session.id,
+      metadata: { agentMode: "code-gen", authType: session.authType },
+    })
+
     return result.toDataStreamResponse()
   } catch (error) {
     await pipelineLogger.logError(request.requestId, "CODE_GEN", `Streaming code generation failed: ${error}`, false)
@@ -141,7 +145,7 @@ Generate the code without explanations, just the code:`
   }
 }
 
-async function handleCodeReview(request: PipelineRequest) {
+async function handleCodeReview(request: PipelineRequest, session: any) {
   try {
     if (!request.codeToReview) {
       throw new Error("No code provided for review")
@@ -173,6 +177,16 @@ Be thorough but constructive in your review.`
         "You are the Groq Supervisor - a senior code reviewer and mentor. Provide thorough, constructive code reviews.",
     })
 
+    // Track code review
+    await analyticsEngine.trackEvent({
+      type: "api_call",
+      endpoint: "/api/multi-agent/review",
+      method: "POST",
+      status_code: 200,
+      user_id: session.id,
+      metadata: { agentMode: "review", authType: session.authType },
+    })
+
     return result.toDataStreamResponse()
   } catch (error) {
     await pipelineLogger.logError(request.requestId, "REVIEW", `Streaming code review failed: ${error}`, false)
@@ -180,11 +194,21 @@ Be thorough but constructive in your review.`
   }
 }
 
-async function handleFullPipeline(request: PipelineRequest) {
+async function handleFullPipeline(request: PipelineRequest, session: any) {
   try {
     const result = await orchestrator.executeFullPipeline(request)
 
     await pipelineLogger.logStage(request.requestId, "API_RESPONSE", null, result, 0)
+
+    // Track full pipeline execution
+    await analyticsEngine.trackEvent({
+      type: "api_call",
+      endpoint: "/api/multi-agent/full-pipeline",
+      method: "POST",
+      status_code: 200,
+      user_id: session.id,
+      metadata: { agentMode: "full-pipeline", authType: session.authType },
+    })
 
     return Response.json(result)
   } catch (error) {

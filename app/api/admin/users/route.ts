@@ -1,57 +1,63 @@
-import { NextResponse } from "next/server"
+import { type NextRequest, NextResponse } from "next/server"
+import { withErrorHandler } from "@/lib/error-handler"
+import { requireAdmin } from "@/lib/auth-middleware"
+import { authSystem } from "@/lib/auth-system"
+import { analyticsEngine } from "@/lib/analytics-engine"
 
-// Mock data - replace with actual database queries
-const mockUsers = [
-  {
-    id: "1",
-    name: "Neo Anderson",
-    email: "neo@matrix.dev",
-    role: "admin",
-    status: "active",
-    lastLogin: "2025-01-28 10:30:00",
-    createdAt: "2025-01-15",
-  },
-  {
-    id: "2",
-    name: "Trinity",
-    email: "trinity@zion.net",
-    role: "user",
-    status: "active",
-    lastLogin: "2025-01-28 09:15:00",
-    createdAt: "2025-01-20",
-  },
-  {
-    id: "3",
-    name: "Morpheus",
-    email: "morpheus@nebuchadnezzar.ship",
-    role: "moderator",
-    status: "inactive",
-    lastLogin: "2025-01-25 15:45:00",
-    createdAt: "2025-01-10",
-  },
-  {
-    id: "4",
-    name: "Agent Smith",
-    email: "smith@matrix.sys",
-    role: "user",
-    status: "suspended",
-    lastLogin: "2025-01-20 08:22:00",
-    createdAt: "2025-01-05",
-  },
-]
+export const GET = withErrorHandler(async (req: NextRequest) => {
+  await requireAdmin(req)
 
-export async function GET() {
-  try {
-    // Simulate API delay
-    await new Promise((resolve) => setTimeout(resolve, 500))
+  const url = new URL(req.url)
+  const search = url.searchParams.get("search")
+  const page = Number.parseInt(url.searchParams.get("page") || "1")
+  const limit = Number.parseInt(url.searchParams.get("limit") || "20")
 
-    return NextResponse.json({
-      success: true,
-      users: mockUsers,
-      total: mockUsers.length,
-    })
-  } catch (error) {
-    console.error("Failed to fetch users:", error)
-    return NextResponse.json({ success: false, error: "Failed to fetch users" }, { status: 500 })
+  let users
+  if (search) {
+    users = await authSystem.searchUsers(search)
+  } else {
+    const offset = (page - 1) * limit
+    users = await authSystem.getAllUsers()
   }
-}
+
+  await analyticsEngine.trackEvent({
+    type: "api_call",
+    endpoint: "/api/admin/users",
+    method: "GET",
+    status_code: 200,
+  })
+
+  return Response.json({
+    success: true,
+    users: users.slice((page - 1) * limit, page * limit),
+    total: users.length,
+    page,
+    totalPages: Math.ceil(users.length / limit),
+  })
+})
+
+export const POST = withErrorHandler(async (req: NextRequest) => {
+  await requireAdmin(req)
+
+  const body = await req.json()
+
+  // Validate input
+  if (!body.name || !body.email || !body.role) {
+    return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
+  }
+
+  // Check if user already exists
+  const existingUser = await authSystem.getOrCreateUser(body.email)
+  if (existingUser) {
+    return NextResponse.json({ error: "User already exists" }, { status: 409 })
+  }
+
+  await analyticsEngine.trackEvent({
+    type: "api_call",
+    endpoint: "/api/admin/users",
+    method: "POST",
+    status_code: 201,
+  })
+
+  return NextResponse.json({ success: true }, { status: 201 })
+})

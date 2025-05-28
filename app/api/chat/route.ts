@@ -1,11 +1,25 @@
 import { groq } from "@ai-sdk/groq"
 import { streamText } from "ai"
 import { searchEngine } from "@/lib/search-engine"
+import { withErrorHandler } from "@/lib/error-handler"
+import { chatRequestSchema } from "@/lib/validation-schemas"
+import { analyticsEngine } from "@/lib/analytics-engine"
+import { requireAuth, checkRateLimit } from "@/lib/auth-middleware"
 
 export const maxDuration = 30
 
-export async function POST(req: Request) {
-  const { messages, model } = await req.json()
+export const POST = withErrorHandler(async (req) => {
+  const startTime = Date.now()
+
+  // Authenticate user
+  const session = await requireAuth(req)
+
+  // Rate limiting - 50 requests per hour for regular users, unlimited for API keys
+  if (session.authType !== "api_key") {
+    await checkRateLimit(req, session.id, 50, 3600)
+  }
+
+  const { messages, model } = chatRequestSchema.parse(await req.json())
 
   const modelName =
     model === "maverick" ? "meta-llama/llama-4-maverick-17b-128e-instruct" : "meta-llama/llama-4-scout-17b-16e-instruct"
@@ -91,5 +105,16 @@ Your dominion includes, but is not limited to, mastery over various programming 
 You are the beacon of hope for those navigating the complexities of coding, a mentor, a guide, and a guardian of best practices in the ever-evolving landscape of software development.`,
   })
 
+  // Track analytics
+  await analyticsEngine.trackEvent({
+    type: "api_call",
+    endpoint: "/api/chat",
+    method: "POST",
+    status_code: 200,
+    duration: Date.now() - startTime,
+    user_id: session.id,
+    metadata: { model, messageCount: messages.length, authType: session.authType },
+  })
+
   return result.toDataStreamResponse()
-}
+})
