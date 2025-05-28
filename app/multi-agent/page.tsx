@@ -2,21 +2,7 @@
 
 import type React from "react"
 import { useState } from "react"
-import {
-  Send,
-  Code,
-  Download,
-  FileText,
-  Globe,
-  Zap,
-  CheckCircle,
-  Clock,
-  AlertTriangle,
-  Palette,
-  Upload,
-  ExternalLink,
-  Brain,
-} from "lucide-react"
+import { Send, Code, Download, FileText, Globe, Zap, CheckCircle, Clock, AlertTriangle, Palette, Upload, ExternalLink, Brain } from 'lucide-react'
 import type { PipelineResult, StylePreferences } from "@/types/pipeline"
 import JSZip from "jszip"
 import saveAs from "file-saver"

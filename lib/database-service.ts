@@ -272,6 +272,111 @@ export class DatabaseService {
     }))
   }
 
+  async healthCheck(): Promise<boolean> {
+    try {
+      const result = await sql`SELECT 1 as health_check`
+      return result.length > 0 && result[0].health_check === 1
+    } catch (error) {
+      console.error("Database health check failed:", error)
+      return false
+    }
+  }
+
+  // Project Context operations
+  async createProjectContext(context: Omit<any, "id" | "created_at" | "updated_at">): Promise<any> {
+    const result = await sql`
+      INSERT INTO project_contexts (
+        user_id, name, type, framework, description, goals, target_audience, 
+        business_logic, current_phase, tech_stack, code_style, user_preferences,
+        repository_url, deployment_url
+      )
+      VALUES (
+        ${context.user_id}, ${context.name}, ${context.type}, ${context.framework || null},
+        ${context.description || null}, ${JSON.stringify(context.goals || [])},
+        ${context.target_audience || null}, ${JSON.stringify(context.business_logic || [])},
+        ${context.current_phase || "planning"}, ${JSON.stringify(context.tech_stack || [])},
+        ${JSON.stringify(context.code_style || {})}, ${JSON.stringify(context.user_preferences || {})},
+        ${context.repository_url || null}, ${context.deployment_url || null}
+      )
+      RETURNING *
+    `
+    return result[0]
+  }
+
+  async getProjectContextsByUser(userId: string): Promise<any[]> {
+    const result = await sql`
+      SELECT * FROM project_contexts 
+      WHERE user_id = ${userId} AND is_active = true
+      ORDER BY updated_at DESC
+    `
+    return result
+  }
+
+  // Email logging
+  async logEmail(log: {
+    recipient_email: string
+    subject: string
+    template_name?: string
+    status: string
+    provider_message_id?: string
+    error_message?: string
+    metadata?: any
+  }): Promise<void> {
+    await sql`
+      INSERT INTO email_logs (
+        recipient_email, subject, template_name, status, 
+        provider_message_id, error_message, metadata, sent_at
+      )
+      VALUES (
+        ${log.recipient_email}, ${log.subject}, ${log.template_name || null},
+        ${log.status}, ${log.provider_message_id || null}, ${log.error_message || null},
+        ${JSON.stringify(log.metadata || {})}, 
+        ${log.status === "sent" ? "CURRENT_TIMESTAMP" : null}
+      )
+    `
+  }
+
+  // System metrics
+  async recordSystemMetric(metric: {
+    metric_name: string
+    metric_value: number
+    metric_unit?: string
+    category: string
+    tags?: any
+  }): Promise<void> {
+    await sql`
+      INSERT INTO system_metrics (metric_name, metric_value, metric_unit, category, tags)
+      VALUES (
+        ${metric.metric_name}, ${metric.metric_value}, ${metric.metric_unit || null},
+        ${metric.category}, ${JSON.stringify(metric.tags || {})}
+      )
+    `
+  }
+
+  // Search query logging
+  async logSearchQuery(query: {
+    user_id?: string
+    query: string
+    search_type?: string
+    results_count: number
+    response_time: number
+    success: boolean
+    error_message?: string
+    metadata?: any
+  }): Promise<void> {
+    await sql`
+      INSERT INTO search_queries (
+        user_id, query, search_type, results_count, response_time,
+        success, error_message, metadata
+      )
+      VALUES (
+        ${query.user_id || null}, ${query.query}, ${query.search_type || "general"},
+        ${query.results_count}, ${query.response_time}, ${query.success},
+        ${query.error_message || null}, ${JSON.stringify(query.metadata || {})}
+      )
+    `
+  }
+
   // Helper methods
   private mapUserRow(row: any): User {
     return {

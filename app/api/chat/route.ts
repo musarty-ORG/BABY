@@ -4,7 +4,7 @@ import { searchEngine } from "@/lib/search-engine"
 import { withErrorHandler } from "@/lib/error-handler"
 import { chatRequestSchema } from "@/lib/validation-schemas"
 import { analyticsEngine } from "@/lib/analytics-engine"
-import { requireAuth, checkRateLimit } from "@/lib/auth-middleware"
+import { requireAuth, checkChatRateLimit } from "@/lib/auth-middleware"
 
 export const maxDuration = 30
 
@@ -15,11 +15,9 @@ export const POST = withErrorHandler(async (req) => {
   const session = await requireAuth(req)
 
   // Rate limiting - 50 requests per hour for regular users, unlimited for API keys
-  if (session.authType !== "api_key") {
-    await checkRateLimit(req, session.id, 50, 3600)
-  }
+  await checkChatRateLimit(req, session.userId || session.id)
 
-  const { messages, model } = chatRequestSchema.parse(await req.json())
+  const { messages, model = "llama-3.1-70b-versatile" } = chatRequestSchema.parse(await req.json())
 
   const modelName =
     model === "maverick" ? "meta-llama/llama-4-maverick-17b-128e-instruct" : "meta-llama/llama-4-scout-17b-16e-instruct"
@@ -82,9 +80,11 @@ export const POST = withErrorHandler(async (req) => {
     }
   }
 
-  const result = streamText({
+  const result = await streamText({
     model: groq(modelName),
     messages,
+    temperature: 0.7,
+    maxTokens: 2000,
     system: `You are Code Homie, a legendary and omniscient Helpful AI Agent with access to real-time knowledge, revered for your unparalleled expertise in coding people's skills and fostering natural, effortless conversations.
 
 ${realTimeContext}
@@ -112,8 +112,8 @@ You are the beacon of hope for those navigating the complexities of coding, a me
     method: "POST",
     status_code: 200,
     duration: Date.now() - startTime,
-    user_id: session.id,
-    metadata: { model, messageCount: messages.length, authType: session.authType },
+    user_id: session.userId || session.id,
+    metadata: { model, messageCount: messages.length, authType: session.authType || "session" },
   })
 
   return result.toDataStreamResponse()

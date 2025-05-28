@@ -7,8 +7,12 @@ export class AnalyticsEngine {
       ...event,
     }
 
-    // Store in database
-    await databaseService.createAnalyticsEvent(analyticsEvent)
+    // Store in database with new schema
+    await databaseService.createAnalyticsEvent({
+      ...analyticsEvent,
+      category: event.metadata?.category || "general",
+      action: event.endpoint || event.type,
+    })
   }
 
   async getSystemMetrics(): Promise<any> {
@@ -38,6 +42,30 @@ export class AnalyticsEngine {
 
   async getEventsByType(type: AnalyticsEvent["type"], limit = 20): Promise<AnalyticsEvent[]> {
     return await databaseService.getAnalyticsEventsByType(type, limit)
+  }
+
+  async getAnalyticsByCategory(category: string, hours = 24): Promise<any[]> {
+    const result = await databaseService.sql`
+      SELECT * FROM analytics_events 
+      WHERE category = ${category} 
+      AND timestamp > NOW() - INTERVAL '${hours} hours'
+      ORDER BY timestamp DESC 
+      LIMIT 100
+    `
+    return result
+  }
+
+  async getTopEndpoints(limit = 10): Promise<any[]> {
+    const result = await databaseService.sql`
+      SELECT endpoint, COUNT(*) as request_count, AVG(duration) as avg_duration
+      FROM analytics_events 
+      WHERE endpoint IS NOT NULL 
+      AND timestamp > NOW() - INTERVAL '24 hours'
+      GROUP BY endpoint 
+      ORDER BY request_count DESC 
+      LIMIT ${limit}
+    `
+    return result
   }
 }
 

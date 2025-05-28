@@ -81,6 +81,14 @@ export function createErrorResponse(error: ApiError | Error, requestId?: string)
     }),
   }
 
+  // Add rate limit headers for rate limit errors
+  const headers: Record<string, string> = {}
+  if (error instanceof RateLimitError) {
+    headers["Retry-After"] = "60" // Default retry after 60 seconds
+    headers["X-RateLimit-Limit"] = "100"
+    headers["X-RateLimit-Remaining"] = "0"
+  }
+
   // Log error
   console.error(`[API_ERROR] ${code}:`, {
     message: error.message,
@@ -89,7 +97,14 @@ export function createErrorResponse(error: ApiError | Error, requestId?: string)
     stack: error.stack,
   })
 
-  return NextResponse.json(errorResponse, { status: statusCode })
+  const response = NextResponse.json(errorResponse, { status: statusCode })
+
+  // Add headers
+  Object.entries(headers).forEach(([key, value]) => {
+    response.headers.set(key, value)
+  })
+
+  return response
 }
 
 export function withErrorHandler(handler: (req: NextRequest, context?: any) => Promise<NextResponse>) {

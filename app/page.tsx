@@ -2,7 +2,7 @@
 
 import { useChat } from "ai/react"
 import { useState, useRef, useEffect } from "react"
-import { Send, Terminal, Zap, Code, Shield, Brain, ArrowRight, Sparkles, Cpu, Globe, Rocket } from "lucide-react"
+import { Send, Terminal, Zap, Code, Shield, Brain, ArrowRight, Sparkles, Cpu, Globe, Rocket } from 'lucide-react'
 import Link from "next/link"
 
 export default function CodeHomieHome() {
@@ -81,6 +81,9 @@ export default function CodeHomieHome() {
               </Link>
               <Link href="/multi-agent" className="text-gray-400 hover:text-purple-400 transition-colors font-semibold">
                 CODE HOMIE
+              </Link>
+              <Link href="/pricing" className="text-gray-400 hover:text-purple-400 transition-colors font-semibold">
+                Pricing
               </Link>
               <div className="flex items-center gap-2 text-xs">
                 <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
