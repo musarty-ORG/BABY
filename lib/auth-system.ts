@@ -1,321 +1,152 @@
-import { neon } from "@neondatabase/serverless"
-import jwt from "jsonwebtoken"
+import { Redis } from "@upstash/redis"
+import { databaseService, type User } from "./database-service"
+import { createJWT, verifyJWT, type JWTPayload } from "./jwt-utils"
 
-const sql = neon(process.env.NEON_NEON_NEON_DATABASE_URL || process.env.NEON_NEON_DATABASE_URL || "")
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+})
 
-interface User {
-  id: string
+export interface Session {
+  userId: string
   email: string
-  name: string | null
   role: string
-  tokenBalance: number
-  createdAt: Date
-  lastLoginAt: Date | null
-  status?: "active" | "inactive" | "suspended"
+  expiresAt: number
 }
 
-interface OTPEntry {
-  email: string
-  otp: string
-  expiresAt: Date
-  attempts: number
-}
-
-class AuthSystem {
-  private otpStore = new Map<string, OTPEntry>()
-  private readonly OTP_EXPIRY_MINUTES = 10
-  private readonly MAX_OTP_ATTEMPTS = 3
-  private readonly JWT_SECRET = process.env.JWT_SECRET || "default-secret-key-for-development-only"
-  private readonly JWT_EXPIRY = "30d" // 30 days
+export class AuthSystem {
+  private readonly OTP_EXPIRY = 10 * 60 // 10 minutes
+  private readonly SESSION_EXPIRY = 24 * 60 * 60 // 24 hours
 
   async generateOTP(email: string): Promise<string> {
-    // Generate 6-digit OTP
-    const otp = Math.floor(100000 + Math.random() * 900000).toString()
+    const otp = Math.random().toString().slice(2, 8).padStart(6, "0")
+    const key = `otp:${email}`
 
-    // Store OTP with expiry
-    this.otpStore.set(email.toLowerCase(), {
-      email: email.toLowerCase(),
-      otp,
-      expiresAt: new Date(Date.now() + this.OTP_EXPIRY_MINUTES * 60 * 1000),
-      attempts: 0,
-    })
+    await redis.setex(key, this.OTP_EXPIRY, otp)
 
-    console.log(`[AUTH] Generated OTP for ${email}: ${otp}`) // For development
+    // In production, send email here
+    console.log(`[AUTH] OTP for ${email}: ${otp}`)
+
     return otp
   }
 
   async verifyOTP(email: string, otp: string): Promise<boolean> {
-    const entry = this.otpStore.get(email.toLowerCase())
+    const key = `otp:${email}`
+    const storedOTP = await redis.get(key)
 
-    if (!entry) {
-      console.log(`[AUTH] No OTP found for ${email}`)
-      return false
-    }
-
-    // Check if OTP is expired
-    if (new Date() > entry.expiresAt) {
-      console.log(`[AUTH] OTP expired for ${email}`)
-      this.otpStore.delete(email.toLowerCase())
-      return false
-    }
-
-    // Check if too many attempts
-    if (entry.attempts >= this.MAX_OTP_ATTEMPTS) {
-      console.log(`[AUTH] Too many OTP attempts for ${email}`)
-      this.otpStore.delete(email.toLowerCase())
-      return false
-    }
-
-    // Increment attempts
-    entry.attempts++
-
-    // Check if OTP matches
-    if (entry.otp === otp) {
-      console.log(`[AUTH] OTP verified for ${email}`)
-      this.otpStore.delete(email.toLowerCase()) // Remove OTP after successful verification
+    if (storedOTP === otp) {
+      await redis.del(key) // Delete used OTP
       return true
     }
 
-    console.log(`[AUTH] Invalid OTP for ${email}: expected ${entry.otp}, got ${otp}`)
     return false
   }
 
-  async getOrCreateUser(email: string, name?: string): Promise<User> {
-    try {
-      // Try to get existing user
-      const existingUsers = await sql`
-        SELECT id, email, name, role, token_balance as "tokenBalance", created_at as "createdAt", last_login_at as "lastLoginAt", status
-        FROM users 
-        WHERE email = ${email.toLowerCase()}
-        LIMIT 1
-      `
-
-      if (existingUsers.length > 0) {
-        const user = existingUsers[0]
-
-        // Update last login
-        await sql`
-          UPDATE users 
-          SET last_login_at = NOW()
-          WHERE id = ${user.id}
-        `
-
-        return {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          role: user.role,
-          tokenBalance: user.tokenBalance,
-          createdAt: new Date(user.createdAt),
-          lastLoginAt: new Date(),
-          status: user.status,
-        }
-      }
-
-      // Create new user
-      const newUsers = await sql`
-        INSERT INTO users (email, name, role, token_balance, created_at, last_login_at, status)
-        VALUES (${email.toLowerCase()}, ${name || null}, 'user', 100, NOW(), NOW(), 'active')
-        RETURNING id, email, name, role, token_balance as "tokenBalance", created_at as "createdAt", last_login_at as "lastLoginAt", status
-      `
-
-      const newUser = newUsers[0]
-      return {
-        id: newUser.id,
-        email: newUser.email,
-        name: newUser.name,
-        role: newUser.role,
-        tokenBalance: newUser.tokenBalance,
-        createdAt: new Date(newUser.createdAt),
-        lastLoginAt: new Date(newUser.lastLoginAt),
-        status: newUser.status,
-      }
-    } catch (error) {
-      console.error("[AUTH] Database error in getOrCreateUser:", error)
-      throw new Error("Failed to get or create user")
-    }
-  }
-
   async createSession(user: User): Promise<string> {
-    const payload = {
+    // Create a JWT token
+    const token = await createJWT({
       userId: user.id,
       email: user.email,
       role: user.role,
-      iat: Math.floor(Date.now() / 1000),
+      name: user.name,
+    })
+
+    // Store session metadata in Redis for potential revocation
+    const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    const session: Session = {
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+      expiresAt: Date.now() + this.SESSION_EXPIRY * 1000,
     }
 
-    return jwt.sign(payload, this.JWT_SECRET, { expiresIn: this.JWT_EXPIRY })
+    await redis.setex(`session:${sessionId}`, this.SESSION_EXPIRY, JSON.stringify(session))
+
+    // Store JWT reference for potential revocation
+    await redis.setex(`jwt:${user.id}:${sessionId}`, this.SESSION_EXPIRY, "active")
+
+    // Update last login in database
+    await databaseService.updateUserLastLogin(user.email)
+
+    return token
   }
 
-  async verifyToken(token: string): Promise<any> {
+  async validateSession(token: string): Promise<JWTPayload | null> {
     try {
-      return jwt.verify(token, this.JWT_SECRET)
+      // Verify JWT token
+      const payload = await verifyJWT(token)
+      if (!payload) return null
+
+      // Check if token has been revoked
+      const isRevoked = await this.isTokenRevoked(payload.userId)
+      if (isRevoked) return null
+
+      return payload
     } catch (error) {
-      throw new Error("Invalid token")
-    }
-  }
-
-  async getUserById(userId: string): Promise<User | null> {
-    try {
-      const users = await sql`
-        SELECT id, email, name, role, token_balance as "tokenBalance", created_at as "createdAt", last_login_at as "lastLoginAt", status
-        FROM users 
-        WHERE id = ${userId}
-        LIMIT 1
-      `
-
-      if (users.length === 0) {
-        return null
-      }
-
-      const user = users[0]
-      return {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-        tokenBalance: user.tokenBalance,
-        createdAt: new Date(user.createdAt),
-        lastLoginAt: user.lastLoginAt ? new Date(user.lastLoginAt) : null,
-        status: user.status,
-      }
-    } catch (error) {
-      console.error("[AUTH] Database error in getUserById:", error)
+      console.error("Session validation error:", error)
       return null
     }
   }
 
-  async getAllUsers(limit = 100, offset = 0): Promise<User[]> {
-    try {
-      const users = await sql`
-        SELECT 
-          id, 
-          email, 
-          name, 
-          role, 
-          status,
-          token_balance as "tokenBalance",
-          created_at as "createdAt", 
-          last_login_at as "lastLoginAt"
-        FROM users 
-        ORDER BY last_login_at DESC NULLS LAST
-        LIMIT ${limit} OFFSET ${offset}
-      `
-
-      return users.map((user) => ({
-        id: user.id,
-        email: user.email,
-        name: user.name || "Unknown",
-        role: user.role,
-        status: user.status,
-        tokenBalance: user.tokenBalance || 0,
-        createdAt: new Date(user.createdAt),
-        lastLoginAt: user.lastLoginAt ? new Date(user.lastLoginAt) : null,
-      }))
-    } catch (error) {
-      console.error("[AUTH] Error getting all users:", error)
-      return []
-    }
+  async isTokenRevoked(userId: string): Promise<boolean> {
+    // Check global revocation list
+    const isRevoked = await redis.get(`revoked:user:${userId}`)
+    return !!isRevoked
   }
 
-  async searchUsers(query: string, limit = 20): Promise<User[]> {
+  async destroySession(token: string): Promise<void> {
     try {
-      const users = await sql`
-        SELECT 
-          id, 
-          email, 
-          name, 
-          role, 
-          status,
-          token_balance as "tokenBalance",
-          created_at as "createdAt", 
-          last_login_at as "lastLoginAt"
-        FROM users 
-        WHERE 
-          name ILIKE ${`%${query}%`} OR 
-          email ILIKE ${`%${query}%`}
-        ORDER BY last_login_at DESC NULLS LAST
-        LIMIT ${limit}
-      `
+      // Verify JWT token
+      const payload = await verifyJWT(token)
+      if (!payload) return
 
-      return users.map((user) => ({
-        id: user.id,
-        email: user.email,
-        name: user.name || "Unknown",
-        role: user.role,
-        status: user.status,
-        tokenBalance: user.tokenBalance || 0,
-        createdAt: new Date(user.createdAt),
-        lastLoginAt: user.lastLoginAt ? new Date(user.lastLoginAt) : null,
-      }))
-    } catch (error) {
-      console.error("[AUTH] Error searching users:", error)
-      return []
-    }
-  }
+      // Add to revocation list
+      await redis.setex(`revoked:user:${payload.userId}`, this.SESSION_EXPIRY, "revoked")
 
-  async updateUserStatus(userId: string, status: "active" | "inactive" | "suspended"): Promise<boolean> {
-    try {
-      await sql`
-        UPDATE users 
-        SET status = ${status}, updated_at = NOW()
-        WHERE id = ${userId}
-      `
-      return true
-    } catch (error) {
-      console.error("[AUTH] Error updating user status:", error)
-      return false
-    }
-  }
-
-  async updateUserRole(userId: string, role: "admin" | "user" | "moderator"): Promise<boolean> {
-    try {
-      await sql`
-        UPDATE users 
-        SET role = ${role}, updated_at = NOW()
-        WHERE id = ${userId}
-      `
-      return true
-    } catch (error) {
-      console.error("[AUTH] Error updating user role:", error)
-      return false
-    }
-  }
-
-  async getUserStats(): Promise<{
-    totalUsers: number
-    activeUsers: number
-    newUsersToday: number
-    suspendedUsers: number
-  }> {
-    try {
-      const [totalResult, activeResult, newTodayResult, suspendedResult] = await Promise.all([
-        sql`SELECT COUNT(*) as count FROM users`,
-        sql`SELECT COUNT(*) as count FROM users WHERE status = 'active'`,
-        sql`SELECT COUNT(*) as count FROM users WHERE DATE(created_at) = CURRENT_DATE`,
-        sql`SELECT COUNT(*) as count FROM users WHERE status = 'suspended'`,
-      ])
-
-      return {
-        totalUsers: Number(totalResult[0]?.count || 0),
-        activeUsers: Number(activeResult[0]?.count || 0),
-        newUsersToday: Number(newTodayResult[0]?.count || 0),
-        suspendedUsers: Number(suspendedResult[0]?.count || 0),
+      // Clean up any Redis session data
+      const keys = await redis.keys(`jwt:${payload.userId}:*`)
+      if (keys.length > 0) {
+        await Promise.all(keys.map((key) => redis.del(key)))
       }
     } catch (error) {
-      console.error("[AUTH] Error getting user stats:", error)
-      return { totalUsers: 0, activeUsers: 0, newUsersToday: 0, suspendedUsers: 0 }
+      console.error("Error destroying session:", error)
     }
   }
 
-  clearOTP(email: string): void {
-    this.otpStore.delete(email.toLowerCase())
+  async getOrCreateUser(email: string): Promise<User> {
+    // Try to get user from database first
+    let user = await databaseService.getUserByEmail(email)
+
+    if (!user) {
+      // Create new user in database
+      const newUser = {
+        id: `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        email,
+        name: email.split("@")[0],
+        role: email.includes("admin") ? "admin" : ("user" as const),
+        status: "active" as const,
+        metadata: {},
+      }
+
+      user = await databaseService.createUser(newUser)
+    }
+
+    return user
   }
 
-  // For development/testing
-  getStoredOTP(email: string): string | null {
-    const entry = this.otpStore.get(email.toLowerCase())
-    return entry?.otp || null
+  async getAllUsers(): Promise<User[]> {
+    return await databaseService.getAllUsers()
+  }
+
+  async updateUser(email: string, updates: Partial<User>): Promise<User | null> {
+    const user = await databaseService.getUserByEmail(email)
+    if (!user) return null
+
+    return await databaseService.updateUser(user.id, updates)
+  }
+
+  async searchUsers(query: string): Promise<User[]> {
+    return await databaseService.searchUsers(query)
   }
 }
 

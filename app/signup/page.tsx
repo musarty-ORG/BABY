@@ -30,32 +30,15 @@ export default function SignupPage() {
         body: JSON.stringify({ email, name, isSignup: true }),
       })
 
-      // Check if response is JSON
-      const contentType = response.headers.get("content-type")
-      if (!contentType || !contentType.includes("application/json")) {
-        throw new Error("Server error. Please try again later.")
-      }
-
       const data = await response.json()
 
-      if (response.ok && data.success) {
+      if (data.success) {
         setStep("otp")
       } else {
-        // Handle API error response
-        const errorMessage = data.error?.message || data.message || "Failed to send OTP"
-        setError(errorMessage)
+        setError(data.error || "Failed to send OTP")
       }
-    } catch (error: any) {
-      console.error("Send OTP error:", error)
-
-      // Show user-friendly error messages
-      if (error.name === "TypeError" && error.message.includes("Failed to fetch")) {
-        setError("Network error. Please check your connection and try again.")
-      } else if (error.message.includes("JSON")) {
-        setError("Server error. Please try again later.")
-      } else {
-        setError(error.message || "Something went wrong. Please try again.")
-      }
+    } catch (error) {
+      setError("Network error. Please try again.")
     } finally {
       setIsLoading(false)
     }
@@ -73,33 +56,16 @@ export default function SignupPage() {
         body: JSON.stringify({ email, otp, name, isSignup: true }),
       })
 
-      // Check if response is JSON
-      const contentType = response.headers.get("content-type")
-      if (!contentType || !contentType.includes("application/json")) {
-        throw new Error("Server error. Please try again later.")
-      }
-
       const data = await response.json()
 
-      if (response.ok && data.success) {
+      if (data.success) {
         login(data.token, data.user)
         router.push("/dashboard?welcome=true")
       } else {
-        // Handle API error response
-        const errorMessage = data.error?.message || data.message || "Invalid OTP"
-        setError(errorMessage)
+        setError(data.error || "Invalid OTP")
       }
-    } catch (error: any) {
-      console.error("Verify OTP error:", error)
-
-      // Show user-friendly error messages
-      if (error.name === "TypeError" && error.message.includes("Failed to fetch")) {
-        setError("Network error. Please check your connection and try again.")
-      } else if (error.message.includes("JSON")) {
-        setError("Server error. Please try again later.")
-      } else {
-        setError(error.message || "Something went wrong. Please try again.")
-      }
+    } catch (error) {
+      setError("Network error. Please try again.")
     } finally {
       setIsLoading(false)
     }
@@ -210,7 +176,7 @@ export default function SignupPage() {
                     type="text"
                     id="otp"
                     value={otp}
-                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    onChange={(e) => setOtp(e.target.value)}
                     className="w-full bg-gray-800/50 border border-purple-500/30 rounded-lg px-4 py-3 pl-10 text-purple-100 placeholder-purple-500/50 focus:outline-none focus:border-purple-400 focus:ring-1 focus:ring-purple-400/50 text-center text-lg tracking-widest"
                     placeholder="000000"
                     maxLength={6}

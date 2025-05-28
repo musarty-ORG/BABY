@@ -45,17 +45,8 @@ export function AuthLogin({ onLogin }: LoginProps) {
       if (process.env.NODE_ENV === "development" && data.otp) {
         setError(`Development OTP: ${data.otp}`)
       }
-    } catch (err: any) {
-      // Handle both string errors and API error objects
-      if (err?.error?.message) {
-        setError(err.error.message)
-      } else if (typeof err === "string") {
-        setError(err)
-      } else if (err?.message) {
-        setError(err.message)
-      } else {
-        setError("Failed to send OTP")
-      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to send OTP")
     } finally {
       setLoading(false)
     }
@@ -88,17 +79,8 @@ export function AuthLogin({ onLogin }: LoginProps) {
 
       // Call the onLogin callback with the token and user data
       onLogin(data.token, data.user)
-    } catch (err: any) {
-      // Handle both string errors and API error objects
-      if (err?.error?.message) {
-        setError(err.error.message)
-      } else if (typeof err === "string") {
-        setError(err)
-      } else if (err?.message) {
-        setError(err.message)
-      } else {
-        setError("Failed to verify OTP")
-      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to verify OTP")
     } finally {
       setLoading(false)
     }

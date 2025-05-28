@@ -1,21 +1,12 @@
-import { OpenAIStream as VercelOpenAIStream, StreamingTextResponse as VercelStreamingTextResponse } from "ai"
 import OpenAI from "openai"
+import { OpenAIStream as VercelOpenAIStream, StreamingTextResponse } from "ai"
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 })
 
-export async function OpenAIStream(messages: any[], options: any = {}) {
+export async function OpenAIStream(response: Response, options: any = {}) {
   try {
-    const response = await openai.chat.completions.create({
-      model: options.model || "gpt-4",
-      messages,
-      stream: true,
-      temperature: options.temperature || 0.7,
-      max_tokens: options.maxTokens || 2000,
-      ...options,
-    })
-
     return VercelOpenAIStream(response)
   } catch (error) {
     console.error("OpenAI Stream error:", error)
@@ -23,6 +14,6 @@ export async function OpenAIStream(messages: any[], options: any = {}) {
   }
 }
 
-export { VercelStreamingTextResponse as StreamingTextResponse }
+export { StreamingTextResponse }
 
 export default openai

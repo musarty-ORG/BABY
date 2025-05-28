@@ -1,99 +1,84 @@
-interface LogEntry {
-  requestId: string
-  timestamp: string
-  level: "info" | "warn" | "error" | "debug"
-  component: string
-  message: string
-  metadata?: any
-}
+import type { AuditLog, PipelineError, PipelineResult } from "@/types/pipeline"
 
 class PipelineLogger {
-  private logs: LogEntry[] = []
-  private readonly MAX_LOGS = 1000
+  private logs: AuditLog[] = []
+  private errors: PipelineError[] = []
 
-  async logInfo(requestId: string, component: string, message: string, metadata?: any): Promise<void> {
-    await this.log(requestId, "info", component, message, metadata)
-  }
+  async logStage(
+    requestId: string,
+    stage: string,
+    input: any,
+    output: any,
+    duration: number,
+    metadata?: any,
+  ): Promise<void> {
+    const logEntry: AuditLog = {
+      requestId,
+      stage,
+      input: this.sanitizeForLogging(input),
+      output: this.sanitizeForLogging(output),
+      duration,
+      timestamp: new Date().toISOString(),
+      metadata,
+    }
 
-  async logWarning(requestId: string, component: string, message: string, metadata?: any): Promise<void> {
-    await this.log(requestId, "warn", component, message, metadata)
+    this.logs.push(logEntry)
+
+    // In production, persist to database
+    console.log(`[AUDIT] ${stage}:`, logEntry)
   }
 
   async logError(
     requestId: string,
-    component: string,
-    message: string,
-    shouldThrow = false,
-    metadata?: any,
+    stage: "CODE_GEN" | "REVIEW" | "ORCHESTRATION",
+    error: string,
+    recoveryAttempted = false,
+    recoverySuccess?: boolean,
   ): Promise<void> {
-    await this.log(requestId, "error", component, message, metadata)
-
-    if (shouldThrow) {
-      throw new Error(message)
-    }
-  }
-
-  async logDebug(requestId: string, component: string, message: string, metadata?: any): Promise<void> {
-    if (process.env.NODE_ENV === "development") {
-      await this.log(requestId, "debug", component, message, metadata)
-    }
-  }
-
-  private async log(
-    requestId: string,
-    level: "info" | "warn" | "error" | "debug",
-    component: string,
-    message: string,
-    metadata?: any,
-  ): Promise<void> {
-    const entry: LogEntry = {
-      requestId,
+    const errorEntry: PipelineError = {
+      stage,
+      error,
       timestamp: new Date().toISOString(),
-      level,
-      component,
-      message,
-      metadata,
+      recoveryAttempted,
+      recoverySuccess,
     }
 
-    // In production, we would send this to a logging service
-    // For now, just console log and store in memory
-    this.logToConsole(entry)
-    this.storeLog(entry)
+    this.errors.push(errorEntry)
+
+    console.error(`[ERROR] ${stage}:`, errorEntry)
   }
 
-  private logToConsole(entry: LogEntry): void {
-    const prefix = `[${entry.timestamp}] [${entry.level.toUpperCase()}] [${entry.component}] [${entry.requestId}]`
+  async persistPipelineResult(result: PipelineResult): Promise<void> {
+    // In production, save to database
+    console.log(`[PIPELINE_COMPLETE] ${result.requestId}:`, result)
 
-    switch (entry.level) {
-      case "error":
-        console.error(`${prefix} ${entry.message}`, entry.metadata || "")
-        break
-      case "warn":
-        console.warn(`${prefix} ${entry.message}`, entry.metadata || "")
-        break
-      case "debug":
-        console.debug(`${prefix} ${entry.message}`, entry.metadata || "")
-        break
-      default:
-        console.log(`${prefix} ${entry.message}`, entry.metadata || "")
+    // Example: Save to file system for demo
+    if (typeof window === "undefined") {
+      // Server-side only
+      try {
+        const fs = await import("fs/promises")
+        const path = `./logs/pipeline-${result.requestId}.json`
+        await fs.writeFile(path, JSON.stringify(result, null, 2))
+      } catch (e) {
+        console.warn("Could not persist to file:", e)
+      }
     }
   }
 
-  private storeLog(entry: LogEntry): void {
-    this.logs.push(entry)
-
-    // Keep logs under the maximum size
-    if (this.logs.length > this.MAX_LOGS) {
-      this.logs = this.logs.slice(-this.MAX_LOGS)
-    }
-  }
-
-  getRecentLogs(count = 100): LogEntry[] {
-    return this.logs.slice(-count)
-  }
-
-  getLogsByRequestId(requestId: string): LogEntry[] {
+  getLogsForRequest(requestId: string): AuditLog[] {
     return this.logs.filter((log) => log.requestId === requestId)
+  }
+
+  getErrorsForRequest(requestId: string): PipelineError[] {
+    return this.errors.filter((error) => error.requestId === requestId)
+  }
+
+  private sanitizeForLogging(data: any): any {
+    // Remove sensitive data, truncate large objects
+    if (typeof data === "string" && data.length > 1000) {
+      return data.substring(0, 1000) + "... [TRUNCATED]"
+    }
+    return data
   }
 }
 

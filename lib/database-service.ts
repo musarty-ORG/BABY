@@ -1,6 +1,5 @@
 import { neon } from "@neondatabase/serverless"
 
-// Use the correct environment variable
 const sql = neon(process.env.NEON_NEON_DATABASE_URL!)
 
 export interface User {
@@ -16,7 +15,7 @@ export interface User {
 
 export interface AnalyticsEvent {
   id: string
-  type: string
+  type: "api_call" | "user_action" | "system_event" | "error"
   user_id?: string
   endpoint?: string
   method?: string
@@ -26,15 +25,19 @@ export interface AnalyticsEvent {
   ip_address?: string
   timestamp: string
   metadata?: Record<string, any>
-  category?: string
-  action?: string
-  session_id?: string
-  browser?: string
-  os?: string
-  device_type?: string
-  city?: string
-  country_code?: string
-  referrer?: string
+}
+
+export interface PipelineJob {
+  id: string
+  user_id?: string
+  job_type: string
+  status: "pending" | "running" | "completed" | "failed"
+  input_data?: Record<string, any>
+  output_data?: Record<string, any>
+  error_message?: string
+  created_at: string
+  updated_at: string
+  completed_at?: string
 }
 
 export interface TokenLedgerEntry {
@@ -79,48 +82,32 @@ export interface PayPalCustomer {
   metadata?: Record<string, any>
 }
 
-export interface UsageTracking {
-  id: number
-  user_id: string
-  usage_type: string
-  usage_date: string
-  count: number
-  created_at: string
-  updated_at: string
-}
-
 export class DatabaseService {
   // Set RLS context for the current user
   async setUserContext(userId: string): Promise<void> {
-    try {
-      await sql`SELECT set_current_user_id(${userId})`
-    } catch (error) {
-      console.warn("Failed to set user context:", error.message)
-    }
+    await sql`SELECT set_current_user_id(${userId})`
   }
 
   // Clear RLS context
   async clearUserContext(): Promise<void> {
-    try {
-      await sql`SELECT set_config('app.current_user_id', '', true)`
-    } catch (error) {
-      console.warn("Failed to clear user context:", error.message)
-    }
+    await sql`SELECT set_config('app.current_user_id', '', true)`
   }
 
   // User operations
   async createUser(user: Omit<User, "created_at" | "last_login">): Promise<User> {
+    // Clear context for user creation (system operation)
     await this.clearUserContext()
 
     const result = await sql`
       INSERT INTO users (id, email, name, role, status, metadata)
-      VALUES (${user.id}::uuid, ${user.email}, ${user.name || null}, ${user.role}, ${user.status}, ${JSON.stringify(user.metadata || {})})
+      VALUES (${user.id}, ${user.email}, ${user.name || null}, ${user.role}, ${user.status}, ${JSON.stringify(user.metadata || {})})
       RETURNING *
     `
     return this.mapUserRow(result[0])
   }
 
   async getUserByEmail(email: string): Promise<User | null> {
+    // Clear context for authentication (system operation)
     await this.clearUserContext()
 
     const result = await sql`
@@ -130,10 +117,11 @@ export class DatabaseService {
   }
 
   async getUserById(id: string): Promise<User | null> {
+    // Set context to allow user to view their own profile
     await this.setUserContext(id)
 
     const result = await sql`
-      SELECT * FROM users WHERE id = ${id}::uuid LIMIT 1
+      SELECT * FROM users WHERE id::text = ${id} LIMIT 1
     `
     return result.length > 0 ? this.mapUserRow(result[0]) : null
   }
@@ -145,19 +133,19 @@ export class DatabaseService {
     const values = []
 
     if (updates.name !== undefined) {
-      setClause.push(`name = $${setClause.length + 2}`)
+      setClause.push(`name = $${setClause.length + 1}`)
       values.push(updates.name)
     }
     if (updates.role !== undefined) {
-      setClause.push(`role = $${setClause.length + 2}`)
+      setClause.push(`role = $${setClause.length + 1}`)
       values.push(updates.role)
     }
     if (updates.status !== undefined) {
-      setClause.push(`status = $${setClause.length + 2}`)
+      setClause.push(`status = $${setClause.length + 1}`)
       values.push(updates.status)
     }
     if (updates.metadata !== undefined) {
-      setClause.push(`metadata = $${setClause.length + 2}`)
+      setClause.push(`metadata = $${setClause.length + 1}`)
       values.push(JSON.stringify(updates.metadata || {}))
     }
 
@@ -166,7 +154,7 @@ export class DatabaseService {
     const result = await sql`
       UPDATE users 
       SET ${sql.unsafe(setClause.join(", "))}, last_login = CURRENT_TIMESTAMP
-      WHERE id = ${id}::uuid
+      WHERE id::text = ${id}
       RETURNING *
     `
     return result.length > 0 ? this.mapUserRow(result[0]) : null
@@ -180,11 +168,12 @@ export class DatabaseService {
   }
 
   async getAllUsers(limit = 100, offset = 0): Promise<User[]> {
+    // Admin operation - clear context to bypass RLS
     await this.clearUserContext()
 
     const result = await sql`
       SELECT * FROM users 
-      ORDER BY last_login DESC NULLS LAST
+      ORDER BY last_login DESC 
       LIMIT ${limit} OFFSET ${offset}
     `
     return result.map(this.mapUserRow)
@@ -196,32 +185,27 @@ export class DatabaseService {
     const result = await sql`
       SELECT * FROM users 
       WHERE name ILIKE ${`%${query}%`} OR email ILIKE ${`%${query}%`}
-      ORDER BY last_login DESC NULLS LAST
+      ORDER BY last_login DESC 
       LIMIT ${limit}
     `
     return result.map(this.mapUserRow)
   }
 
-  // Analytics operations using your actual schema
+  // Analytics operations
   async createAnalyticsEvent(event: Omit<AnalyticsEvent, "timestamp">): Promise<void> {
     await this.clearUserContext()
 
     await sql`
       INSERT INTO analytics_events (
         id, type, user_id, endpoint, method, status_code, 
-        duration, user_agent, ip_address, metadata, category,
-        action, session_id, browser, os, device_type, city,
-        country_code, referrer
+        duration, user_agent, ip_address, metadata
       )
       VALUES (
-        ${event.id}::uuid, ${event.type}, ${event.user_id ? `${event.user_id}::uuid` : null}, 
+        ${event.id}, ${event.type}, ${event.user_id || null}, 
         ${event.endpoint || null}, ${event.method || null}, 
         ${event.status_code || null}, ${event.duration || null}, 
         ${event.user_agent || null}, ${event.ip_address || null}, 
-        ${JSON.stringify(event.metadata || {})}, ${event.category || null},
-        ${event.action || null}, ${event.session_id ? `${event.session_id}::uuid` : null},
-        ${event.browser || null}, ${event.os || null}, ${event.device_type || null},
-        ${event.city || null}, ${event.country_code || null}, ${event.referrer || null}
+        ${JSON.stringify(event.metadata || {})}
       )
     `
   }
@@ -252,40 +236,31 @@ export class DatabaseService {
   async getSystemMetrics(): Promise<any> {
     await this.clearUserContext()
 
-    try {
-      const [totalUsers, activeUsers, recentApiCalls, recentErrors, avgResponseTime] = await Promise.all([
+    // Get recent metrics
+    const [totalUsers, activeUsers, recentApiCalls, recentErrors, avgResponseTime, activePipelineJobs] =
+      await Promise.all([
         sql`SELECT COUNT(*) as count FROM users`,
         sql`SELECT COUNT(*) as count FROM users WHERE last_login > NOW() - INTERVAL '24 hours'`,
         sql`SELECT COUNT(*) as count FROM analytics_events WHERE timestamp > NOW() - INTERVAL '1 hour'`,
         sql`SELECT COUNT(*) as count FROM analytics_events WHERE status_code >= 400 AND timestamp > NOW() - INTERVAL '1 hour'`,
         sql`SELECT AVG(duration) as avg_duration FROM analytics_events WHERE duration IS NOT NULL AND timestamp > NOW() - INTERVAL '1 hour'`,
+        sql`SELECT COUNT(*) as count FROM pipeline_jobs WHERE status IN ('pending', 'running')`,
       ])
 
-      const totalApiCalls = Number(recentApiCalls[0]?.count || 0)
-      const errorCount = Number(recentErrors[0]?.count || 0)
+    const totalApiCalls = Number(recentApiCalls[0]?.count || 0)
+    const errorCount = Number(recentErrors[0]?.count || 0)
 
-      return {
-        totalUsers: Number(totalUsers[0]?.count || 0),
-        activeUsers: Number(activeUsers[0]?.count || 0),
-        apiCalls: totalApiCalls,
-        errorRate: totalApiCalls > 0 ? (errorCount / totalApiCalls) * 100 : 0,
-        avgResponseTime: Math.round(Number(avgResponseTime[0]?.avg_duration || 0)),
-        pipelineJobs: 0, // No pipeline_jobs table in your schema
-      }
-    } catch (error) {
-      console.error("Error getting system metrics:", error)
-      return {
-        totalUsers: 0,
-        activeUsers: 0,
-        apiCalls: 0,
-        errorRate: 0,
-        avgResponseTime: 0,
-        pipelineJobs: 0,
-      }
+    return {
+      totalUsers: Number(totalUsers[0]?.count || 0),
+      activeUsers: Number(activeUsers[0]?.count || 0),
+      apiCalls: totalApiCalls,
+      errorRate: totalApiCalls > 0 ? (errorCount / totalApiCalls) * 100 : 0,
+      avgResponseTime: Math.round(Number(avgResponseTime[0]?.avg_duration || 0)),
+      pipelineJobs: Number(activePipelineJobs[0]?.count || 0),
     }
   }
 
-  // Token Ledger operations
+  // Token Ledger operations with RLS
   async createTokenLedgerEntry(entry: Omit<TokenLedgerEntry, "created_at">): Promise<TokenLedgerEntry> {
     await this.clearUserContext()
 
@@ -300,48 +275,36 @@ export class DatabaseService {
   async getUserTokenBalance(userId: string): Promise<UserTokenBalance> {
     await this.setUserContext(userId)
 
-    try {
-      // Get user's current plan and subscription info
-      const userResult = await sql`
-        SELECT plan, metadata->>'subscription_id' as subscription_id FROM users WHERE id = ${userId}::uuid
-      `
+    // Get user's current plan and subscription info
+    const userResult = await sql`
+      SELECT plan, metadata->>'subscription_id' as subscription_id FROM users WHERE id::text = ${userId}
+    `
 
-      if (userResult.length === 0) {
-        throw new Error("User not found")
-      }
+    if (userResult.length === 0) {
+      throw new Error("User not found")
+    }
 
-      const user = userResult[0]
+    const user = userResult[0]
 
-      // Calculate total balance from token_ledger
-      const balanceResult = await sql`
-        SELECT 
-          COALESCE(SUM(delta), 0) as total_balance,
-          COALESCE(SUM(CASE WHEN metadata->>'type' = 'monthly' THEN delta ELSE 0 END), 0) as monthly_balance,
-          COALESCE(SUM(CASE WHEN metadata->>'type' = 'topup' THEN delta ELSE 0 END), 0) as topup_balance
-        FROM token_ledger 
-        WHERE user_id = ${userId}
-      `
+    // Calculate total balance
+    const balanceResult = await sql`
+      SELECT 
+        COALESCE(SUM(delta), 0) as total_balance,
+        COALESCE(SUM(CASE WHEN metadata->>'type' = 'monthly' THEN delta ELSE 0 END), 0) as monthly_balance,
+        COALESCE(SUM(CASE WHEN metadata->>'type' = 'topup' THEN delta ELSE 0 END), 0) as topup_balance
+      FROM token_ledger 
+      WHERE user_id = ${userId}
+    `
 
-      const balance = balanceResult[0]
+    const balance = balanceResult[0]
 
-      return {
-        user_id: userId,
-        total_balance: Number(balance.total_balance),
-        monthly_balance: Number(balance.monthly_balance),
-        topup_balance: Number(balance.topup_balance),
-        plan: user.plan || "none",
-        subscription_id: user.subscription_id,
-      }
-    } catch (error) {
-      console.error("Error getting token balance:", error)
-      return {
-        user_id: userId,
-        total_balance: 0,
-        monthly_balance: 0,
-        topup_balance: 0,
-        plan: "none",
-        subscription_id: null,
-      }
+    return {
+      user_id: userId,
+      total_balance: Number(balance.total_balance),
+      monthly_balance: Number(balance.monthly_balance),
+      topup_balance: Number(balance.topup_balance),
+      plan: user.plan || "none",
+      subscription_id: user.subscription_id,
     }
   }
 
@@ -357,40 +320,87 @@ export class DatabaseService {
     return result.map(this.mapTokenLedgerRow)
   }
 
-  // Usage tracking operations
-  async createUsageEntry(userId: string, usageType: string, count = 1): Promise<UsageTracking> {
-    await this.clearUserContext()
-
-    const today = new Date().toISOString().split("T")[0]
+  // Vaulted Payment Method operations with RLS
+  async createVaultedPaymentMethod(
+    method: Omit<VaultedPaymentMethod, "created_at" | "updated_at">,
+  ): Promise<VaultedPaymentMethod> {
+    await this.setUserContext(method.user_id)
 
     const result = await sql`
-      INSERT INTO usage_tracking (user_id, usage_type, usage_date, count)
-      VALUES (${userId}, ${usageType}, ${today}, ${count})
-      ON CONFLICT (user_id, usage_type, usage_date)
-      DO UPDATE SET 
-        count = usage_tracking.count + ${count},
-        updated_at = CURRENT_TIMESTAMP
+      INSERT INTO vaulted_payment_methods (
+        id, user_id, paypal_vault_id, payment_type, last_digits, brand, 
+        card_type, expiry, paypal_email, is_default, metadata
+      )
+      VALUES (
+        ${method.id}, ${method.user_id}, ${method.paypal_vault_id}, ${method.payment_type},
+        ${method.last_digits || null}, ${method.brand || null}, ${method.card_type || null},
+        ${method.expiry || null}, ${method.paypal_email || null}, ${method.is_default},
+        ${JSON.stringify(method.metadata || {})}
+      )
       RETURNING *
     `
-
-    return this.mapUsageTrackingRow(result[0])
+    return this.mapVaultedPaymentMethodRow(result[0])
   }
 
-  async getUserUsage(userId: string, usageType: string, date?: string): Promise<UsageTracking | null> {
+  async getVaultedPaymentMethodsByUserId(userId: string): Promise<VaultedPaymentMethod[]> {
     await this.setUserContext(userId)
 
-    const targetDate = date || new Date().toISOString().split("T")[0]
-
     const result = await sql`
-      SELECT * FROM usage_tracking 
-      WHERE user_id = ${userId} AND usage_type = ${usageType} AND usage_date = ${targetDate}
-      LIMIT 1
+      SELECT * FROM vaulted_payment_methods 
+      WHERE user_id = ${userId}
+      ORDER BY is_default DESC, created_at DESC
     `
-
-    return result.length > 0 ? this.mapUsageTrackingRow(result[0]) : null
+    return result.map(this.mapVaultedPaymentMethodRow)
   }
 
-  // Subscription operations
+  async deleteVaultedPaymentMethod(id: string, userId: string): Promise<void> {
+    await this.setUserContext(userId)
+
+    await sql`
+      DELETE FROM vaulted_payment_methods WHERE id = ${id} AND user_id = ${userId}
+    `
+  }
+
+  async setDefaultPaymentMethod(userId: string, methodId: string): Promise<void> {
+    await this.setUserContext(userId)
+
+    // First, unset all default methods for this user
+    await sql`
+      UPDATE vaulted_payment_methods 
+      SET is_default = false 
+      WHERE user_id = ${userId}
+    `
+
+    // Then set the new default
+    await sql`
+      UPDATE vaulted_payment_methods 
+      SET is_default = true 
+      WHERE id = ${methodId} AND user_id = ${userId}
+    `
+  }
+
+  // PayPal Customer operations with RLS
+  async createPayPalCustomer(customer: Omit<PayPalCustomer, "created_at">): Promise<PayPalCustomer> {
+    await this.clearUserContext()
+
+    const result = await sql`
+      INSERT INTO paypal_customers (id, user_id, paypal_customer_id, metadata)
+      VALUES (${customer.id}, ${customer.user_id}, ${customer.paypal_customer_id}, ${JSON.stringify(customer.metadata || {})})
+      RETURNING *
+    `
+    return this.mapPayPalCustomerRow(result[0])
+  }
+
+  async getPayPalCustomerByUserId(userId: string): Promise<PayPalCustomer | null> {
+    await this.setUserContext(userId)
+
+    const result = await sql`
+      SELECT * FROM paypal_customers WHERE user_id = ${userId} LIMIT 1
+    `
+    return result.length > 0 ? this.mapPayPalCustomerRow(result[0]) : null
+  }
+
+  // Subscription operations with RLS
   async createSubscription(subscription: {
     id: string
     user_id: string
@@ -411,84 +421,51 @@ export class DatabaseService {
     return result[0]
   }
 
-  async getAllSubscriptions(limit = 50, status?: string): Promise<any[]> {
+  async updateSubscription(
+    subscriptionId: string,
+    updates: {
+      status?: string
+      metadata?: any
+    },
+  ): Promise<any> {
     await this.clearUserContext()
 
-    let query
-    if (status) {
-      query = sql`
-        SELECT 
-          s.*,
-          u.email,
-          u.name
-        FROM subscriptions s
-        JOIN users u ON s.user_id = u.id::text
-        WHERE s.status = ${status}
-        ORDER BY s.created_at DESC 
-        LIMIT ${limit}
-      `
-    } else {
-      query = sql`
-        SELECT 
-          s.*,
-          u.email,
-          u.name
-        FROM subscriptions s
-        JOIN users u ON s.user_id = u.id::text
-        ORDER BY s.created_at DESC 
-        LIMIT ${limit}
-      `
+    const setClause = []
+
+    if (updates.status !== undefined) {
+      setClause.push(`status = '${updates.status}'`)
+    }
+    if (updates.metadata !== undefined) {
+      setClause.push(`metadata = '${JSON.stringify(updates.metadata)}'`)
     }
 
-    return await query
+    if (setClause.length === 0) return null
+
+    const result = await sql`
+      UPDATE subscriptions 
+      SET ${sql.unsafe(setClause.join(", "))}, updated_at = CURRENT_TIMESTAMP
+      WHERE paypal_subscription_id = ${subscriptionId}
+      RETURNING *
+    `
+    return result.length > 0 ? result[0] : null
   }
 
-  async getSystemStats(): Promise<{
-    totalUsers: number
-    activeUsers: number
-    totalSubscriptions: number
-    activeSubscriptions: number
-    totalRevenue: number
-    totalTokensUsed: number
-  }> {
+  async getSubscriptionByPayPalId(paypalSubscriptionId: string): Promise<any> {
     await this.clearUserContext()
 
-    try {
-      const [
-        totalUsersResult,
-        activeUsersResult,
-        totalSubscriptionsResult,
-        activeSubscriptionsResult,
-        totalRevenueResult,
-        totalTokensResult,
-      ] = await Promise.all([
-        sql`SELECT COUNT(*) as count FROM users`,
-        sql`SELECT COUNT(*) as count FROM users WHERE status = 'active'`,
-        sql`SELECT COUNT(*) as count FROM subscriptions`,
-        sql`SELECT COUNT(*) as count FROM subscriptions WHERE status = 'active'`,
-        sql`SELECT SUM(CAST(metadata->>'amount' AS DECIMAL)) as total FROM subscriptions WHERE status = 'active'`,
-        sql`SELECT SUM(ABS(delta)) as total FROM token_ledger WHERE delta < 0`,
-      ])
+    const result = await sql`
+      SELECT * FROM subscriptions WHERE paypal_subscription_id = ${paypalSubscriptionId} LIMIT 1
+    `
+    return result.length > 0 ? result[0] : null
+  }
 
-      return {
-        totalUsers: Number(totalUsersResult[0]?.count || 0),
-        activeUsers: Number(activeUsersResult[0]?.count || 0),
-        totalSubscriptions: Number(totalSubscriptionsResult[0]?.count || 0),
-        activeSubscriptions: Number(activeSubscriptionsResult[0]?.count || 0),
-        totalRevenue: Number(totalRevenueResult[0]?.total || 0),
-        totalTokensUsed: Number(totalTokensResult[0]?.total || 0),
-      }
-    } catch (error) {
-      console.error("Error getting system stats:", error)
-      return {
-        totalUsers: 0,
-        activeUsers: 0,
-        totalSubscriptions: 0,
-        activeSubscriptions: 0,
-        totalRevenue: 0,
-        totalTokensUsed: 0,
-      }
-    }
+  async getUserSubscription(userId: string): Promise<any> {
+    await this.setUserContext(userId)
+
+    const result = await sql`
+      SELECT * FROM subscriptions WHERE user_id = ${userId} AND status = 'active' LIMIT 1
+    `
+    return result.length > 0 ? result[0] : null
   }
 
   async healthCheck(): Promise<boolean> {
@@ -499,6 +476,35 @@ export class DatabaseService {
     } catch (error) {
       console.error("Database health check failed:", error)
       return false
+    }
+  }
+
+  // Helper methods for new types
+  private mapPayPalCustomerRow(row: any): PayPalCustomer {
+    return {
+      id: row.id,
+      user_id: row.user_id,
+      paypal_customer_id: row.paypal_customer_id,
+      created_at: row.created_at,
+      metadata: row.metadata || {},
+    }
+  }
+
+  private mapVaultedPaymentMethodRow(row: any): VaultedPaymentMethod {
+    return {
+      id: row.id,
+      user_id: row.user_id,
+      paypal_vault_id: row.paypal_vault_id,
+      payment_type: row.payment_type,
+      last_digits: row.last_digits,
+      brand: row.brand,
+      card_type: row.card_type,
+      expiry: row.expiry,
+      paypal_email: row.paypal_email,
+      is_default: row.is_default,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+      metadata: row.metadata || {},
     }
   }
 
@@ -529,15 +535,21 @@ export class DatabaseService {
       ip_address: row.ip_address,
       timestamp: row.timestamp,
       metadata: row.metadata || {},
-      category: row.category,
-      action: row.action,
-      session_id: row.session_id,
-      browser: row.browser,
-      os: row.os,
-      device_type: row.device_type,
-      city: row.city,
-      country_code: row.country_code,
-      referrer: row.referrer,
+    }
+  }
+
+  private mapPipelineJobRow(row: any): PipelineJob {
+    return {
+      id: row.id,
+      user_id: row.user_id,
+      job_type: row.job_type,
+      status: row.status,
+      input_data: row.input_data || {},
+      output_data: row.output_data || {},
+      error_message: row.error_message,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+      completed_at: row.completed_at,
     }
   }
 
@@ -549,29 +561,6 @@ export class DatabaseService {
       reason: row.reason,
       created_at: row.created_at,
       metadata: row.metadata || {},
-    }
-  }
-
-  private mapUsageTrackingRow(row: any): UsageTracking {
-    return {
-      id: row.id,
-      user_id: row.user_id,
-      usage_type: row.usage_type,
-      usage_date: row.usage_date,
-      count: Number(row.count),
-      created_at: row.created_at,
-      updated_at: row.updated_at,
-    }
-  }
-
-  // Generic query method for flexibility
-  async query(text: string, params: any[] = []): Promise<{ rows: any[] }> {
-    try {
-      const result = await sql.unsafe(text, params)
-      return { rows: Array.isArray(result) ? result : [result] }
-    } catch (error) {
-      console.error("Database query error:", error)
-      throw error
     }
   }
 }
