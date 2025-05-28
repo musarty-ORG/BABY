@@ -45,7 +45,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     const user = await databaseService.getUserByEmail(userEmail)
     if (!user) {
       console.error(`User not found for email: ${userEmail}`)
-      return NextResponse.redirect(`${process.env.NEXT_PUBLIC_BASE_URL}/dashboard?error=user_not_found`)
+      return NextResponse.redirect(`${process.env.NEXT_PUBLIC_BASE_URL}/pricing?error=user_not_found`)
     }
 
     // Credit the user's account
@@ -54,10 +54,10 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     console.log(`Top-up processed successfully: ${messages} messages for user ${user.id}`)
 
     return NextResponse.redirect(
-      `${process.env.NEXT_PUBLIC_BASE_URL}/dashboard?success=topup_completed&messages=${messages}`,
+      `${process.env.NEXT_PUBLIC_BASE_URL}/pricing?success=topup_completed&messages=${messages}`,
     )
   } catch (error: any) {
     console.error("Order success processing error:", error)
-    return NextResponse.redirect(`${process.env.NEXT_PUBLIC_BASE_URL}/dashboard?error=processing_failed`)
+    return NextResponse.redirect(`${process.env.NEXT_PUBLIC_BASE_URL}/pricing?error=processing_failed`)
   }
 })

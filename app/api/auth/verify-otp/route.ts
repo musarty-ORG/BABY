@@ -38,8 +38,8 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   const user = await authSystem.getOrCreateUser(email)
   const isNewUser = !user.lastLoginAt
 
-  // Create JWT token
-  const token = await authSystem.createSession(user)
+  // Create session
+  const sessionId = await authSystem.createSession(user)
 
   // Send welcome email for new users
   if (isNewUser) {
@@ -66,7 +66,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   return Response.json({
     success: true,
     message: "Login successful",
-    token,
+    sessionId,
     user: {
       id: user.id,
       email: user.email,

@@ -1,39 +1,54 @@
 import type { NextAuthOptions } from "next-auth"
-import { authSystem } from "./auth-system"
+import CredentialsProvider from "next-auth/providers/credentials"
+import { neon } from "@neondatabase/serverless"
+
+const sql = neon(process.env.NEON_NEON_DATABASE_URL!)
 
 export const authOptions: NextAuthOptions = {
   providers: [
-    // Custom provider for OTP authentication
-    {
-      id: "otp",
-      name: "OTP",
-      type: "credentials",
+    CredentialsProvider({
+      name: "credentials",
       credentials: {
         email: { label: "Email", type: "email" },
-        otp: { label: "OTP", type: "text" },
+        password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
-        if (!credentials?.email || !credentials?.otp) {
+        if (!credentials?.email || !credentials?.password) {
           return null
         }
 
         try {
-          const result = await authSystem.verifyOTP(credentials.email, credentials.otp)
-          if (result.success && result.user) {
-            return {
-              id: result.user.id,
-              email: result.user.email,
-              name: result.user.name,
-              role: result.user.role,
-            }
+          const users = await sql`
+            SELECT id, email, name, password_hash, created_at, subscription_status, token_balance
+            FROM users 
+            WHERE email = ${credentials.email}
+          `
+
+          if (users.length === 0) {
+            return null
           }
-          return null
+
+          const user = users[0]
+
+          // In a real implementation, you'd verify the password hash
+          // For now, we'll do a simple comparison (replace with proper bcrypt)
+          if (credentials.password !== user.password_hash) {
+            return null
+          }
+
+          return {
+            id: user.id.toString(),
+            email: user.email,
+            name: user.name,
+            subscriptionStatus: user.subscription_status,
+            tokenBalance: user.token_balance,
+          }
         } catch (error) {
           console.error("Auth error:", error)
           return null
         }
       },
-    },
+    }),
   ],
   session: {
     strategy: "jwt",
@@ -41,24 +56,22 @@ export const authOptions: NextAuthOptions = {
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
-        token.role = user.role
-        token.userId = user.id
+        token.subscriptionStatus = (user as any).subscriptionStatus
+        token.tokenBalance = (user as any).tokenBalance
       }
       return token
     },
     async session({ session, token }) {
       if (token) {
-        session.user.id = token.userId as string
-        session.user.role = token.role as string
+        session.user.id = token.sub!
+        ;(session.user as any).subscriptionStatus = token.subscriptionStatus
+        ;(session.user as any).tokenBalance = token.tokenBalance
       }
       return session
     },
   },
   pages: {
-    signIn: "/login",
-    signUp: "/signup",
+    signIn: "/auth/signin",
+    error: "/auth/error",
   },
 }
-
-// Re-export authSystem for compatibility
-export { authSystem }

@@ -66,11 +66,9 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
 
     console.log(`Subscription activated successfully: ${subscriptionId}`)
 
-    return NextResponse.redirect(
-      `${process.env.NEXT_PUBLIC_BASE_URL}/dashboard?success=subscription_activated&plan=${planName}`,
-    )
+    return NextResponse.redirect(`${process.env.NEXT_PUBLIC_BASE_URL}/pricing?success=subscription_activated`)
   } catch (error: any) {
     console.error("Subscription success processing error:", error)
-    return NextResponse.redirect(`${process.env.NEXT_PUBLIC_BASE_URL}/dashboard?error=processing_failed`)
+    return NextResponse.redirect(`${process.env.NEXT_PUBLIC_BASE_URL}/pricing?error=processing_failed`)
   }
 })

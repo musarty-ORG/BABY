@@ -1,6 +1,5 @@
 import { Redis } from "@upstash/redis"
 import { databaseService, type User } from "./database-service"
-import { createJWT, verifyJWT, type JWTPayload } from "./jwt-utils"
 
 const redis = new Redis({
   url: process.env.UPSTASH_REDIS_REST_URL!,
@@ -43,15 +42,6 @@ export class AuthSystem {
   }
 
   async createSession(user: User): Promise<string> {
-    // Create a JWT token
-    const token = await createJWT({
-      userId: user.id,
-      email: user.email,
-      role: user.role,
-      name: user.name,
-    })
-
-    // Store session metadata in Redis for potential revocation
     const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
     const session: Session = {
       userId: user.id,
@@ -62,55 +52,33 @@ export class AuthSystem {
 
     await redis.setex(`session:${sessionId}`, this.SESSION_EXPIRY, JSON.stringify(session))
 
-    // Store JWT reference for potential revocation
-    await redis.setex(`jwt:${user.id}:${sessionId}`, this.SESSION_EXPIRY, "active")
-
     // Update last login in database
     await databaseService.updateUserLastLogin(user.email)
 
-    return token
+    return sessionId
   }
 
-  async validateSession(token: string): Promise<JWTPayload | null> {
+  async validateSession(sessionId: string): Promise<Session | null> {
     try {
-      // Verify JWT token
-      const payload = await verifyJWT(token)
-      if (!payload) return null
+      const sessionData = await redis.get(`session:${sessionId}`)
+      if (!sessionData) return null
 
-      // Check if token has been revoked
-      const isRevoked = await this.isTokenRevoked(payload.userId)
-      if (isRevoked) return null
+      const session: Session = JSON.parse(sessionData as string)
 
-      return payload
+      if (session.expiresAt < Date.now()) {
+        await redis.del(`session:${sessionId}`)
+        return null
+      }
+
+      return session
     } catch (error) {
       console.error("Session validation error:", error)
       return null
     }
   }
 
-  async isTokenRevoked(userId: string): Promise<boolean> {
-    // Check global revocation list
-    const isRevoked = await redis.get(`revoked:user:${userId}`)
-    return !!isRevoked
-  }
-
-  async destroySession(token: string): Promise<void> {
-    try {
-      // Verify JWT token
-      const payload = await verifyJWT(token)
-      if (!payload) return
-
-      // Add to revocation list
-      await redis.setex(`revoked:user:${payload.userId}`, this.SESSION_EXPIRY, "revoked")
-
-      // Clean up any Redis session data
-      const keys = await redis.keys(`jwt:${payload.userId}:*`)
-      if (keys.length > 0) {
-        await Promise.all(keys.map((key) => redis.del(key)))
-      }
-    } catch (error) {
-      console.error("Error destroying session:", error)
-    }
+  async destroySession(sessionId: string): Promise<void> {
+    await redis.del(`session:${sessionId}`)
   }
 
   async getOrCreateUser(email: string): Promise<User> {

@@ -1,13 +1,24 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { databaseService } from "@/lib/database-service"
 import { withErrorHandler } from "@/lib/error-handler"
-import { requireAuth } from "@/lib/auth-middleware"
 
 export const GET = withErrorHandler(async (req: NextRequest) => {
   try {
-    // Use proper authentication middleware
-    const auth = await requireAuth(req)
-    const userId = auth.userId
+    // Get user session
+    const authHeader = req.headers.get("authorization")
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return NextResponse.json({ success: false, error: "Missing authorization header" }, { status: 401 })
+    }
+
+    const sessionToken = authHeader.replace("Bearer ", "")
+    let userId: string
+
+    try {
+      const decoded = JSON.parse(Buffer.from(sessionToken, "base64").toString())
+      userId = decoded.userId
+    } catch {
+      return NextResponse.json({ success: false, error: "Invalid session token" }, { status: 401 })
+    }
 
     // Get user info
     const user = await databaseService.getUserById(userId)

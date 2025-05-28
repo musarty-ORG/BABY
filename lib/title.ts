@@ -1,41 +1,80 @@
-import openai from "../utils/openai"
-import { pipelineLogger } from "./pipeline-logger"
+import { generateText } from "ai"
+import { createOpenAI } from "@ai-sdk/openai"
 
-export async function generateTitle(message: string, requestId?: string): Promise<string> {
+const openai = createOpenAI({
+  apiKey: process.env.OPENAI_API_KEY!,
+})
+
+export async function generateTitle(prompt: string): Promise<string> {
   try {
-    const response = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo",
-      messages: [
-        {
-          role: "system",
-          content:
-            "Generate a short, descriptive title (max 6 words) for this conversation based on the user's message. Return only the title, no quotes or extra text.",
-        },
-        {
-          role: "user",
-          content: message,
-        },
-      ],
-      max_tokens: 20,
-      temperature: 0.7,
+    // Extract the first part of the conversation or prompt
+    const truncatedPrompt = prompt.length > 200 ? prompt.substring(0, 200) + "..." : prompt
+
+    const { text } = await generateText({
+      model: openai("gpt-4o-mini"),
+      prompt: `Generate a concise, descriptive title (max 6 words) for this conversation or request: "${truncatedPrompt}"
+      
+      Rules:
+      - Keep it under 6 words
+      - Make it descriptive and specific
+      - Don't use quotes
+      - Focus on the main topic or action
+      
+      Title:`,
+      maxTokens: 50,
+      temperature: 0.3,
     })
 
-    const title = response.choices[0]?.message?.content?.trim() || "New Conversation"
+    // Clean up the response and ensure it's not too long
+    const title = text.trim().replace(/^["']|["']$/g, "")
 
-    if (requestId) {
-      await pipelineLogger.logInfo(requestId, "TITLE_GENERATOR", `Generated title: ${title}`)
+    // Fallback titles based on content
+    if (!title || title.length < 3) {
+      if (prompt.toLowerCase().includes("code")) return "Code Assistant"
+      if (prompt.toLowerCase().includes("search")) return "Search Query"
+      if (prompt.toLowerCase().includes("analyze")) return "Data Analysis"
+      if (prompt.toLowerCase().includes("deploy")) return "Deployment Help"
+      return "AI Conversation"
     }
 
-    return title
+    return title.length > 50 ? title.substring(0, 47) + "..." : title
   } catch (error) {
-    if (requestId) {
-      await pipelineLogger.logError(requestId, "TITLE_GENERATOR", `Failed to generate title: ${error.message}`, false, {
-        originalMessage: message.substring(0, 100),
-      })
-    }
+    console.error("Title generation error:", error)
 
-    // Fallback to a simple title based on message content
-    const words = message.split(" ").slice(0, 4).join(" ")
-    return words.length > 0 ? words : "New Conversation"
+    // Fallback title generation based on keywords
+    const lowerPrompt = prompt.toLowerCase()
+    if (lowerPrompt.includes("code") || lowerPrompt.includes("programming")) return "Code Assistant"
+    if (lowerPrompt.includes("search") || lowerPrompt.includes("find")) return "Search Query"
+    if (lowerPrompt.includes("analyze") || lowerPrompt.includes("data")) return "Data Analysis"
+    if (lowerPrompt.includes("deploy") || lowerPrompt.includes("build")) return "Deployment Help"
+    if (lowerPrompt.includes("bug") || lowerPrompt.includes("error")) return "Bug Fix"
+    if (lowerPrompt.includes("optimize") || lowerPrompt.includes("improve")) return "Optimization"
+
+    return "AI Conversation"
+  }
+}
+
+export async function generateProjectTitle(description: string): Promise<string> {
+  try {
+    const { text } = await generateText({
+      model: openai("gpt-4o-mini"),
+      prompt: `Generate a creative project name for: "${description}"
+      
+      Rules:
+      - 2-4 words maximum
+      - Professional but memorable
+      - Avoid generic terms like "app" or "system"
+      - Make it specific to the project's purpose
+      
+      Project Name:`,
+      maxTokens: 30,
+      temperature: 0.5,
+    })
+
+    const title = text.trim().replace(/^["']|["']$/g, "")
+    return title || "New Project"
+  } catch (error) {
+    console.error("Project title generation error:", error)
+    return "New Project"
   }
 }

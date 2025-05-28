@@ -1,123 +1,188 @@
-import { databaseService } from "./database-service"
-import { pipelineLogger } from "./pipeline-logger"
+import { neon } from "@neondatabase/serverless"
+import { getServerSession } from "next-auth"
+import { authOptions } from "./auth"
 
-interface UsageCount {
-  count: number
-  limit: number
-  resetTime: Date
+const sql = neon(process.env.NEON_NEON_DATABASE_URL!)
+
+// Usage limits per plan
+const USAGE_LIMITS = {
+  free: 10,
+  basic: 100,
+  builder: 500,
+  architect: 2000,
 }
 
-export async function incrementUsageCount(userId: string, type = "api_call", amount = 1): Promise<UsageCount> {
-  const requestId = `usage_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-
+export async function incrementUsageCount(userId?: string, operation = "api_call", tokens = 1): Promise<void> {
   try {
-    // Get current usage for today
+    let userIdToUse = userId
+
+    if (!userIdToUse) {
+      const session = await getServerSession(authOptions)
+      if (!session?.user?.id) {
+        throw new Error("No user session found")
+      }
+      userIdToUse = session.user.id
+    }
+
+    // Get current date for daily usage tracking
     const today = new Date().toISOString().split("T")[0]
 
-    const result = await databaseService.query(
-      `INSERT INTO usage_tracking (user_id, usage_type, usage_date, count)
-       VALUES ($1, $2, $3, $4)
-       ON CONFLICT (user_id, usage_type, usage_date)
-       DO UPDATE SET count = usage_tracking.count + $4
-       RETURNING count`,
-      [userId, type, today, amount],
-    )
+    // Check if usage record exists for today
+    const existingUsage = await sql`
+      SELECT id, usage_count, tokens_used
+      FROM daily_usage 
+      WHERE user_id = ${userIdToUse} AND date = ${today}
+    `
 
-    const currentCount = result.rows[0]?.count || amount
-
-    // Get user's subscription to determine limits
-    const userResult = await databaseService.query(`SELECT role FROM users WHERE id = $1`, [userId])
-
-    const userRole = userResult.rows[0]?.role || "user"
-    const limit = getUserLimit(userRole, type)
-
-    await pipelineLogger.logInfo(
-      requestId,
-      "USAGE_TRACKER",
-      `Incremented ${type} usage for user ${userId}: ${currentCount}/${limit}`,
-    )
-
-    return {
-      count: currentCount,
-      limit,
-      resetTime: new Date(new Date().setHours(23, 59, 59, 999)), // End of day
+    if (existingUsage.length > 0) {
+      // Update existing record
+      await sql`
+        UPDATE daily_usage 
+        SET 
+          usage_count = usage_count + 1,
+          tokens_used = tokens_used + ${tokens},
+          updated_at = NOW()
+        WHERE user_id = ${userIdToUse} AND date = ${today}
+      `
+    } else {
+      // Create new record
+      await sql`
+        INSERT INTO daily_usage (user_id, date, usage_count, tokens_used, operation_type)
+        VALUES (${userIdToUse}, ${today}, 1, ${tokens}, ${operation})
+      `
     }
+
+    // Also log the specific operation
+    await sql`
+      INSERT INTO usage_logs (user_id, operation_type, tokens_used, timestamp)
+      VALUES (${userIdToUse}, ${operation}, ${tokens}, NOW())
+    `
   } catch (error) {
-    await pipelineLogger.logError(requestId, "USAGE_TRACKER", `Failed to increment usage: ${error.message}`, false, {
-      userId,
-      type,
-      amount,
-    })
-
-    // Return conservative values on error
-    return {
-      count: 1,
-      limit: 10,
-      resetTime: new Date(new Date().setHours(23, 59, 59, 999)),
-    }
+    console.error("Increment usage count error:", error)
+    throw error
   }
 }
 
-export async function checkUsageCount(userId: string, type = "api_call"): Promise<UsageCount> {
-  const requestId = `check_usage_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+export async function checkUsageCount(userId?: string): Promise<boolean> {
+  try {
+    let userIdToCheck = userId
 
+    if (!userIdToCheck) {
+      const session = await getServerSession(authOptions)
+      if (!session?.user?.id) {
+        return false
+      }
+      userIdToCheck = session.user.id
+    }
+
+    // Get user's subscription plan
+    const users = await sql`
+      SELECT subscription_plan, subscription_status
+      FROM users 
+      WHERE id = ${userIdToCheck}
+    `
+
+    if (users.length === 0) {
+      return false
+    }
+
+    const user = users[0]
+    const plan = user.subscription_plan || "free"
+    const limit = USAGE_LIMITS[plan as keyof typeof USAGE_LIMITS] || USAGE_LIMITS.free
+
+    // If user has active subscription, they have higher limits
+    if (user.subscription_status === "active" && plan !== "free") {
+      // Get today's usage
+      const today = new Date().toISOString().split("T")[0]
+      const usage = await sql`
+        SELECT usage_count
+        FROM daily_usage 
+        WHERE user_id = ${userIdToCheck} AND date = ${today}
+      `
+
+      const currentUsage = usage.length > 0 ? usage[0].usage_count : 0
+      return currentUsage < limit
+    }
+
+    // For free users, check daily limit
+    const today = new Date().toISOString().split("T")[0]
+    const usage = await sql`
+      SELECT usage_count
+      FROM daily_usage 
+      WHERE user_id = ${userIdToCheck} AND date = ${today}
+    `
+
+    const currentUsage = usage.length > 0 ? usage[0].usage_count : 0
+    return currentUsage < USAGE_LIMITS.free
+  } catch (error) {
+    console.error("Check usage count error:", error)
+    return false
+  }
+}
+
+export async function getUserUsageStats(userId: string) {
   try {
     const today = new Date().toISOString().split("T")[0]
 
-    const result = await databaseService.query(
-      `SELECT count FROM usage_tracking 
-       WHERE user_id = $1 AND usage_type = $2 AND usage_date = $3`,
-      [userId, type, today],
-    )
+    // Get today's usage
+    const todayUsage = await sql`
+      SELECT usage_count, tokens_used
+      FROM daily_usage 
+      WHERE user_id = ${userId} AND date = ${today}
+    `
 
-    const currentCount = result.rows[0]?.count || 0
+    // Get this month's usage
+    const thisMonth = new Date().toISOString().substring(0, 7) // YYYY-MM
+    const monthlyUsage = await sql`
+      SELECT SUM(usage_count) as total_calls, SUM(tokens_used) as total_tokens
+      FROM daily_usage 
+      WHERE user_id = ${userId} AND date LIKE ${thisMonth + "%"}
+    `
 
-    // Get user's role to determine limits
-    const userResult = await databaseService.query(`SELECT role FROM users WHERE id = $1`, [userId])
+    // Get user's plan and limits
+    const users = await sql`
+      SELECT subscription_plan, subscription_status
+      FROM users 
+      WHERE id = ${userId}
+    `
 
-    const userRole = userResult.rows[0]?.role || "user"
-    const limit = getUserLimit(userRole, type)
+    const user = users[0]
+    const plan = user?.subscription_plan || "free"
+    const limit = USAGE_LIMITS[plan as keyof typeof USAGE_LIMITS] || USAGE_LIMITS.free
 
     return {
-      count: currentCount,
-      limit,
-      resetTime: new Date(new Date().setHours(23, 59, 59, 999)),
+      today: {
+        calls: todayUsage.length > 0 ? todayUsage[0].usage_count : 0,
+        tokens: todayUsage.length > 0 ? todayUsage[0].tokens_used : 0,
+      },
+      monthly: {
+        calls: monthlyUsage[0]?.total_calls || 0,
+        tokens: monthlyUsage[0]?.total_tokens || 0,
+      },
+      limits: {
+        daily: limit,
+        plan: plan,
+      },
+      canMakeRequest: await checkUsageCount(userId),
     }
   } catch (error) {
-    await pipelineLogger.logError(requestId, "USAGE_TRACKER", `Failed to check usage: ${error.message}`, false, {
-      userId,
-      type,
-    })
-
-    return {
-      count: 0,
-      limit: 10,
-      resetTime: new Date(new Date().setHours(23, 59, 59, 999)),
-    }
+    console.error("Get usage stats error:", error)
+    return null
   }
 }
 
-function getUserLimit(role: string, type: string): number {
-  const limits = {
-    user: {
-      api_call: 100,
-      chat_message: 50,
-      file_upload: 10,
-      ai_generation: 20,
-    },
-    premium: {
-      api_call: 500,
-      chat_message: 200,
-      file_upload: 50,
-      ai_generation: 100,
-    },
-    admin: {
-      api_call: 10000,
-      chat_message: 10000,
-      file_upload: 1000,
-      ai_generation: 1000,
-    },
-  }
+export async function resetDailyUsage(userId: string): Promise<boolean> {
+  try {
+    const today = new Date().toISOString().split("T")[0]
 
-  return limits[role]?.[type] || limits.user[type] || 10
+    await sql`
+      DELETE FROM daily_usage 
+      WHERE user_id = ${userId} AND date = ${today}
+    `
+
+    return true
+  } catch (error) {
+    console.error("Reset daily usage error:", error)
+    return false
+  }
 }

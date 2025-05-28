@@ -5,7 +5,7 @@ import { analyticsEngine } from "./analytics-engine"
 import { rateLimiter, RateLimiter } from "./rate-limiter"
 
 export async function requireAuth(req: NextRequest) {
-  const authHeader = req.headers.get("authorization")
+  const sessionId = req.headers.get("authorization")?.replace("Bearer ", "")
   const apiKey = req.headers.get("x-api-key")
   const clientIP = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "unknown"
 
@@ -41,21 +41,20 @@ export async function requireAuth(req: NextRequest) {
     return { id: "api_user", email: "api@system", role: "user", authType: "api_key" }
   }
 
-  // Check for JWT token
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    throw new AuthenticationError("Authentication required - provide JWT token or API key")
+  // Check for session token
+  if (!sessionId) {
+    throw new AuthenticationError("Authentication required - provide session token or API key")
   }
 
-  const token = authHeader.replace("Bearer ", "")
-  const payload = await authSystem.validateSession(token)
+  const session = await authSystem.validateSession(sessionId)
 
-  if (!payload) {
-    throw new AuthenticationError("Invalid or expired token")
+  if (!session) {
+    throw new AuthenticationError("Invalid or expired session")
   }
 
   // Rate limit session usage
   const rateLimitResult = await rateLimiter.checkLimit({
-    identifier: `user:${payload.userId}`,
+    identifier: `user:${session.userId}`,
     ...RateLimiter.RULES.API_GENERAL,
   })
 
@@ -69,15 +68,15 @@ export async function requireAuth(req: NextRequest) {
     endpoint: req.url,
     method: req.method,
     status_code: 200,
-    user_id: payload.userId,
+    user_id: session.userId,
     metadata: {
-      authType: "jwt",
+      authType: "session",
       rateLimitRemaining: rateLimitResult.remaining,
       clientIP,
     },
   })
 
-  return { ...payload, authType: "jwt" }
+  return session
 }
 
 export async function requireAdmin(req: NextRequest) {
