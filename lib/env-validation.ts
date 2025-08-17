@@ -4,10 +4,9 @@
 
 export function validateEnvironment() {
   const requiredEnvVars = [
-    "GROQ_API_KEY",
-    "NEON_NEON_DATABASE_URL",
-    "UPSTASH_REDIS_REST_URL",
-    "UPSTASH_REDIS_REST_TOKEN",
+    "NEON_DATABASE_URL",
+    "NEXTAUTH_SECRET",
+    "NEXTAUTH_URL",
   ]
 
   const missingVars = requiredEnvVars.filter((varName) => !process.env[varName])
@@ -16,17 +15,23 @@ export function validateEnvironment() {
     throw new Error(`Missing required environment variables: ${missingVars.join(", ")}`)
   }
 
-  // TODO: Add environment variable format validation
-  // TODO: Add connection testing for external services
+  // Optional environment variables that enable additional features
+  const optionalVars = [
+    "ANTHROPIC_API_KEY",
+    "GOOGLE_GENERATIVE_AI_API_KEY", // For Vertex AI
+  ]
+
+  const availableOptionalVars = optionalVars.filter((varName) => !!process.env[varName])
+  console.log("Available optional services:", availableOptionalVars.join(", "))
 
   return true
 }
 
-// TODO: Add environment-specific feature flags
+// Feature flags for production deployment
 export const FEATURE_FLAGS = {
-  ENABLE_RATE_LIMITING: process.env.NODE_ENV === "production",
   ENABLE_ANALYTICS: true,
-  ENABLE_SEARCH: !!process.env.TAVILY_API_KEY,
+  ENABLE_AI_SERVICES: !!(process.env.ANTHROPIC_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY),
+  ENABLE_VERTEX_AI: !!process.env.GOOGLE_GENERATIVE_AI_API_KEY,
+  ENABLE_ANTHROPIC: !!process.env.ANTHROPIC_API_KEY,
   ENABLE_DEPLOYMENT: !!(process.env.GITHUB_TOKEN && process.env.VERCEL_TOKEN),
-  // TODO: Add more feature flags for gradual rollouts
 }

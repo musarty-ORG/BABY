@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server"
 import { withErrorHandler } from "@/lib/error-handler"
 import { emailService } from "@/lib/email-service"
-import { rateLimiter } from "@/lib/rate-limiter"
+import { simpleCounter } from "@/lib/rate-limiter"
 import { databaseService } from "@/lib/database-service"
-import { authSystem } from "@/lib/auth-system"
+import { anthropicService } from "@/lib/anthropic-service"
+import { vertexAISpeechEngine } from "@/lib/vertex-ai-speech-engine"
 
 export const GET = withErrorHandler(async () => {
   const startTime = Date.now()
@@ -23,22 +24,18 @@ export const GET = withErrorHandler(async () => {
     }
   }
 
-  // Check Redis/Rate Limiting
+  // Check Counter System
   try {
-    const testResult = await rateLimiter.checkLimit({
-      identifier: "health_check",
-      limit: 1000,
-      window: 60,
-    })
-    checks.redis = {
+    const testResult = await simpleCounter.incrementCounter("health_check", simpleCounter.CATEGORIES.API_CALLS)
+    checks.counter = {
       status: "healthy",
-      message: "Redis connection verified",
-      remaining: testResult.remaining,
+      message: "Counter system verified",
+      count: testResult.count,
     }
   } catch (error) {
-    checks.redis = {
+    checks.counter = {
       status: "unhealthy",
-      message: `Redis error: ${error.message}`,
+      message: `Counter system error: ${error.message}`,
     }
   }
 
@@ -56,39 +53,61 @@ export const GET = withErrorHandler(async () => {
     }
   }
 
-  // Check Auth System
+  // Check Anthropic Service
   try {
-    // Test OTP generation (without sending)
-    const testOtp = await authSystem.generateOTP("health@test.com")
-    checks.auth = {
-      status: testOtp ? "healthy" : "unhealthy",
-      message: testOtp ? "Auth system verified" : "Auth system failed",
+    const anthropicTest = await anthropicService.testConnection()
+    checks.anthropic = {
+      status: anthropicTest.success ? "healthy" : "unhealthy",
+      message: anthropicTest.message,
+      details: anthropicTest.details,
     }
   } catch (error) {
-    checks.auth = {
+    checks.anthropic = {
       status: "unhealthy",
-      message: `Auth system error: ${error.message}`,
+      message: `Anthropic service error: ${error.message}`,
+    }
+  }
+
+  // Check Vertex AI Service
+  try {
+    const vertexTest = await vertexAISpeechEngine.testConnection()
+    checks.vertexAI = {
+      status: vertexTest.success ? "healthy" : "unhealthy",
+      message: vertexTest.message,
+      details: vertexTest.details,
+    }
+  } catch (error) {
+    checks.vertexAI = {
+      status: "unhealthy",
+      message: `Vertex AI service error: ${error.message}`,
     }
   }
 
   // Check Environment Variables
   const requiredEnvVars = [
-    "GROQ_API_KEY",
-    "NEON_NEON_DATABASE_URL",
-    "UPSTASH_REDIS_REST_URL",
-    "UPSTASH_REDIS_REST_TOKEN",
-    "API_SECRET_KEY",
+    "NEON_DATABASE_URL",
+    "NEXTAUTH_SECRET",
+    "NEXTAUTH_URL",
   ]
 
-  const missingEnvVars = requiredEnvVars.filter((envVar) => !process.env[envVar])
+  const optionalEnvVars = [
+    "ANTHROPIC_API_KEY",
+    "GOOGLE_GENERATIVE_AI_API_KEY",
+    "VERCEL_TOKEN",
+    "GITHUB_TOKEN",
+  ]
+
+  const missingRequired = requiredEnvVars.filter((envVar) => !process.env[envVar])
+  const availableOptional = optionalEnvVars.filter((envVar) => !!process.env[envVar])
 
   checks.environment = {
-    status: missingEnvVars.length === 0 ? "healthy" : "unhealthy",
+    status: missingRequired.length === 0 ? "healthy" : "unhealthy",
     message:
-      missingEnvVars.length === 0
+      missingRequired.length === 0
         ? "All required environment variables present"
-        : `Missing environment variables: ${missingEnvVars.join(", ")}`,
-    missing: missingEnvVars,
+        : `Missing required environment variables: ${missingRequired.join(", ")}`,
+    missing: missingRequired,
+    optional: availableOptional,
   }
 
   const allHealthy = Object.values(checks).every((check) => check.status === "healthy")

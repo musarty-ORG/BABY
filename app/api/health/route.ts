@@ -5,10 +5,12 @@ export async function GET() {
       status: "ok",
       timestamp: new Date().toISOString(),
       services: {
-        groq: !!process.env.GROQ_API_KEY,
+        anthropic: !!process.env.ANTHROPIC_API_KEY,
+        vertexAI: !!process.env.GOOGLE_GENERATIVE_AI_API_KEY,
+        neonDB: !!process.env.NEON_DATABASE_URL,
+        nextAuth: !!process.env.NEXTAUTH_SECRET,
         vercel: !!process.env.VERCEL_TOKEN,
         github: !!process.env.GITHUB_TOKEN,
-        redis: !!process.env.UPSTASH_REDIS_REST_URL,
       },
     })
   } catch (error) {

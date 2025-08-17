@@ -1,91 +1,129 @@
-import { Redis } from "@upstash/redis"
+import { sql } from "@neondatabase/serverless"
+import { databaseService } from "./database-service"
 
-const redis = new Redis({
-  url: process.env.UPSTASH_REDIS_REST_URL!,
-  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
-})
-
-export interface RateLimitConfig {
-  limit: number
-  window: number // seconds
-  identifier: string
+export interface CounterResult {
+  count: number
+  lastIncrement: Date
 }
 
-export interface RateLimitResult {
-  success: boolean
-  limit: number
-  remaining: number
-  resetTime: number
-  retryAfter?: number
-}
-
-export class RateLimiter {
-  async checkLimit(config: RateLimitConfig): Promise<RateLimitResult> {
-    const { limit, window, identifier } = config
-    const now = Date.now()
-    const windowStart = Math.floor(now / (window * 1000))
-    const key = `rate_limit:${identifier}:${windowStart}`
-
+export class SimpleCounter {
+  async incrementCounter(identifier: string, category: string = 'general'): Promise<CounterResult> {
     try {
-      // Use Redis pipeline for atomic operations
-      const pipeline = redis.pipeline()
-      pipeline.incr(key)
-      pipeline.expire(key, window)
+      const db = databaseService.getConnection()
+      
+      // Create counters table if it doesn't exist
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS counters (
+          id SERIAL PRIMARY KEY,
+          identifier VARCHAR(255) NOT NULL,
+          category VARCHAR(100) DEFAULT 'general',
+          count INTEGER DEFAULT 0,
+          last_increment TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(identifier, category)
+        )
+      `)
 
-      const results = await pipeline.exec()
-      const count = results[0] as number
+      // Increment or create counter
+      const result = await db.execute(sql`
+        INSERT INTO counters (identifier, category, count, last_increment)
+        VALUES (${identifier}, ${category}, 1, CURRENT_TIMESTAMP)
+        ON CONFLICT (identifier, category)
+        DO UPDATE SET 
+          count = counters.count + 1,
+          last_increment = CURRENT_TIMESTAMP
+        RETURNING count, last_increment
+      `)
 
-      const remaining = Math.max(0, limit - count)
-      const resetTime = (windowStart + 1) * window * 1000
-
-      if (count > limit) {
-        return {
-          success: false,
-          limit,
-          remaining: 0,
-          resetTime,
-          retryAfter: Math.ceil((resetTime - now) / 1000),
-        }
-      }
-
+      const row = result.rows[0] as any
       return {
-        success: true,
-        limit,
-        remaining,
-        resetTime,
+        count: row.count,
+        lastIncrement: new Date(row.last_increment)
       }
     } catch (error) {
-      console.error("Rate limiting error:", error)
-      // Fail open - allow request if Redis is down
+      console.error("Counter increment failed:", error)
+      // Fail gracefully - return a default count
       return {
-        success: true,
-        limit,
-        remaining: limit - 1,
-        resetTime: now + window * 1000,
+        count: 1,
+        lastIncrement: new Date()
       }
     }
   }
 
-  async checkMultipleRules(rules: RateLimitConfig[]): Promise<RateLimitResult> {
-    const results = await Promise.all(rules.map((rule) => this.checkLimit(rule)))
+  async getCounter(identifier: string, category: string = 'general'): Promise<CounterResult | null> {
+    try {
+      const db = databaseService.getConnection()
+      
+      const result = await db.execute(sql`
+        SELECT count, last_increment 
+        FROM counters 
+        WHERE identifier = ${identifier} AND category = ${category}
+      `)
 
-    // Return the most restrictive result
-    const failed = results.find((result) => !result.success)
-    if (failed) return failed
+      if (result.rows.length === 0) {
+        return null
+      }
 
-    // Return the result with the least remaining requests
-    return results.reduce((min, current) => (current.remaining < min.remaining ? current : min))
+      const row = result.rows[0] as any
+      return {
+        count: row.count,
+        lastIncrement: new Date(row.last_increment)
+      }
+    } catch (error) {
+      console.error("Counter retrieval failed:", error)
+      return null
+    }
   }
 
-  // Preset rate limiting rules
-  static readonly RULES = {
-    OTP_REQUEST: { limit: 5, window: 300 }, // 5 OTP requests per 5 minutes
-    API_GENERAL: { limit: 100, window: 3600 }, // 100 requests per hour
-    API_HEAVY: { limit: 10, window: 60 }, // 10 heavy operations per minute
-    LOGIN_ATTEMPT: { limit: 10, window: 900 }, // 10 login attempts per 15 minutes
-    ADMIN_ACTION: { limit: 50, window: 3600 }, // 50 admin actions per hour
-    CHAT_MESSAGE: { limit: 30, window: 60 }, // 30 chat messages per minute
+  async resetCounter(identifier: string, category: string = 'general'): Promise<boolean> {
+    try {
+      const db = databaseService.getConnection()
+      
+      await db.execute(sql`
+        UPDATE counters 
+        SET count = 0, last_increment = CURRENT_TIMESTAMP
+        WHERE identifier = ${identifier} AND category = ${category}
+      `)
+
+      return true
+    } catch (error) {
+      console.error("Counter reset failed:", error)
+      return false
+    }
+  }
+
+  async getTopCounters(category: string = 'general', limit: number = 10): Promise<Array<{identifier: string, count: number, lastIncrement: Date}>> {
+    try {
+      const db = databaseService.getConnection()
+      
+      const result = await db.execute(sql`
+        SELECT identifier, count, last_increment
+        FROM counters 
+        WHERE category = ${category}
+        ORDER BY count DESC
+        LIMIT ${limit}
+      `)
+
+      return result.rows.map((row: any) => ({
+        identifier: row.identifier,
+        count: row.count,
+        lastIncrement: new Date(row.last_increment)
+      }))
+    } catch (error) {
+      console.error("Top counters retrieval failed:", error)
+      return []
+    }
+  }
+
+  // Common counter categories
+  static readonly CATEGORIES = {
+    API_CALLS: 'api_calls',
+    USER_ACTIONS: 'user_actions', 
+    CHAT_MESSAGES: 'chat_messages',
+    ADMIN_ACTIONS: 'admin_actions',
+    LOGINS: 'logins',
+    GENERAL: 'general'
   }
 }
 
-export const rateLimiter = new RateLimiter()
+export const simpleCounter = new SimpleCounter()

@@ -1,23 +1,6 @@
-import { groq } from "@ai-sdk/groq"
-import { generateText } from "ai"
-import { Redis } from "@upstash/redis"
-
-const redis = (() => {
-  try {
-    if (process.env.USE_LOCAL_REDIS === "true") {
-      return new Redis({ url: process.env.LOCAL_REDIS_URL || "redis://localhost:6379" })
-    } else if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
-      // Use the recommended fromEnv() method
-      return Redis.fromEnv()
-    } else {
-      console.warn("Upstash Redis environment variables not found")
-      return null
-    }
-  } catch (error) {
-    console.error("Upstash Redis initialization failed:", error)
-    return null
-  }
-})()
+import { anthropicService } from "./anthropic-service"
+import { vertexAISpeechEngine } from "./vertex-ai-speech-engine"
+import { simpleCounter } from "./rate-limiter"
 
 export interface ProjectContext {
   id: string
@@ -116,8 +99,11 @@ export interface BusinessLogicSuggestion {
 }
 
 export class ContextualAssistant {
-  private readonly CONTEXT_TTL = 86400 * 7 // 7 days
-  private readonly SUGGESTION_TTL = 86400 * 3 // 3 days
+  private projectContexts = new Map<string, { data: ProjectContext; timestamp: number }>()
+  private userPreferences = new Map<string, { data: UserPreferences; timestamp: number }>()
+  private suggestions = new Map<string, { data: ProactiveSuggestion[]; timestamp: number }>()
+  private readonly CONTEXT_TTL = 86400000 * 7 // 7 days in milliseconds
+  private readonly SUGGESTION_TTL = 86400000 * 3 // 3 days in milliseconds
 
   // Project Context Management
   async createProjectContext(userId: string, projectData: Partial<ProjectContext>): Promise<ProjectContext> {
@@ -167,8 +153,15 @@ export class ContextualAssistant {
   async getProjectContext(userId: string, projectId: string): Promise<ProjectContext | null> {
     try {
       const key = `context:${userId}:${projectId}`
-      const context = await redis.get(key)
-      return context ? JSON.parse(context as string) : null
+      const cached = this.projectContexts.get(key)
+      
+      if (cached && Date.now() - cached.timestamp < this.CONTEXT_TTL) {
+        return cached.data
+      } else if (cached) {
+        this.projectContexts.delete(key)
+      }
+      
+      return null
     } catch (error) {
       console.error("Failed to get project context:", error)
       return null
@@ -178,7 +171,13 @@ export class ContextualAssistant {
   private async saveProjectContext(userId: string, context: ProjectContext): Promise<void> {
     try {
       const key = `context:${userId}:${context.id}`
-      await redis.setex(key, this.CONTEXT_TTL, JSON.stringify(context))
+      this.projectContexts.set(key, {
+        data: context,
+        timestamp: Date.now()
+      })
+      
+      // Increment counter for project updates
+      await simpleCounter.incrementCounter(userId, simpleCounter.CATEGORIES.USER_ACTIONS)
     } catch (error) {
       console.error("Failed to save project context:", error)
     }
@@ -223,13 +222,8 @@ Extract:
 Return as JSON object with these properties.`
 
     try {
-      const result = await generateText({
-        model: groq("meta-llama/llama-4-scout-17b-16e-instruct"),
-        prompt: analysisPrompt,
-        system: "You are a code style analyzer. Extract consistent patterns from code samples.",
-      })
-
-      return JSON.parse(result.text)
+      const result = await anthropicService.generateText(analysisPrompt)
+      return JSON.parse(result)
     } catch (error) {
       console.error("Coding style analysis failed:", error)
       return {}
@@ -306,14 +300,9 @@ Suggest 3-5 features that would benefit this project.
 Consider user needs, business goals, and technical feasibility.`
 
     try {
-      const result = await generateText({
-        model: groq("meta-llama/llama-4-scout-17b-16e-instruct"),
-        prompt: featurePrompt,
-        system: "You are a product manager and UX expert. Suggest valuable features for software projects.",
-      })
-
+      const result = await anthropicService.generateText(featurePrompt)
       // Parse suggestions from AI response
-      const parsedSuggestions = this.parseFeatureSuggestions(result.text, context)
+      const parsedSuggestions = this.parseFeatureSuggestions(result, context)
       suggestions.push(...parsedSuggestions)
     } catch (error) {
       console.error("Feature suggestion generation failed:", error)
@@ -342,13 +331,8 @@ ${Object.entries(currentCode)
 Suggest specific performance optimizations with code examples.`
 
     try {
-      const result = await generateText({
-        model: groq("meta-llama/llama-4-scout-17b-16e-instruct"),
-        prompt: performancePrompt,
-        system: "You are a performance optimization expert. Identify bottlenecks and suggest improvements.",
-      })
-
-      const parsedSuggestions = this.parsePerformanceSuggestions(result.text, context)
+      const result = await anthropicService.generateText(performancePrompt)
+      const parsedSuggestions = this.parsePerformanceSuggestions(result, context)
       suggestions.push(...parsedSuggestions)
     } catch (error) {
       console.error("Performance suggestion generation failed:", error)
@@ -409,13 +393,8 @@ Current Features: ${context.features.map((f) => f.name).join(", ")}
 Focus on user experience, accessibility, and usability improvements.`
 
     try {
-      const result = await generateText({
-        model: groq("meta-llama/llama-4-scout-17b-16e-instruct"),
-        prompt: uxPrompt,
-        system: "You are a UX/UI expert. Suggest improvements that enhance user experience and accessibility.",
-      })
-
-      const parsedSuggestions = this.parseUXSuggestions(result.text, context)
+      const result = await anthropicService.generateText(uxPrompt)
+      const parsedSuggestions = this.parseUXSuggestions(result, context)
       suggestions.push(...parsedSuggestions)
     } catch (error) {
       console.error("UX suggestion generation failed:", error)
@@ -483,13 +462,8 @@ Suggest:
 Focus on scalable, maintainable architecture.`
 
     try {
-      const result = await generateText({
-        model: groq("meta-llama/llama-4-scout-17b-16e-instruct"),
-        prompt: businessPrompt,
-        system: "You are a senior software architect. Design scalable database schemas and API architectures.",
-      })
-
-      return this.parseBusinessLogicSuggestions(result.text)
+      const result = await anthropicService.generateText(businessPrompt)
+      return this.parseBusinessLogicSuggestions(result)
     } catch (error) {
       console.error("Business logic analysis failed:", error)
       return []
@@ -515,23 +489,37 @@ Focus on scalable, maintainable architecture.`
   private async getUserPreferences(userId: string): Promise<UserPreferences> {
     try {
       const key = `preferences:${userId}`
-      const prefs = await redis.get(key)
-      return prefs
-        ? JSON.parse(prefs as string)
-        : {
-            preferredLanguages: ["typescript", "javascript"],
-            experienceLevel: "intermediate",
-            learningGoals: [],
-            workingHours: "9-17",
-            timezone: "UTC",
-            communicationStyle: "detailed",
-            notificationPreferences: {
-              suggestions: true,
-              reminders: true,
-              updates: true,
-              learning: true,
-            },
-          }
+      const cached = this.userPreferences.get(key)
+      
+      if (cached && Date.now() - cached.timestamp < this.CONTEXT_TTL) {
+        return cached.data
+      } else if (cached) {
+        this.userPreferences.delete(key)
+      }
+      
+      // Return default preferences if no cached data
+      const defaultPrefs: UserPreferences = {
+        preferredLanguages: ["typescript", "javascript"],
+        experienceLevel: "intermediate",
+        learningGoals: [],
+        workingHours: "9-17",
+        timezone: "UTC",
+        communicationStyle: "detailed",
+        notificationPreferences: {
+          suggestions: true,
+          reminders: true,
+          updates: true,
+          learning: true,
+        },
+      }
+      
+      // Cache the default preferences
+      this.userPreferences.set(key, {
+        data: defaultPrefs,
+        timestamp: Date.now()
+      })
+      
+      return defaultPrefs
     } catch (error) {
       console.error("Failed to get user preferences:", error)
       return {
@@ -577,7 +565,13 @@ Focus on scalable, maintainable architecture.`
   private async cacheSuggestions(userId: string, projectId: string, suggestions: ProactiveSuggestion[]): Promise<void> {
     try {
       const key = `suggestions:${userId}:${projectId}`
-      await redis.setex(key, this.SUGGESTION_TTL, JSON.stringify(suggestions))
+      this.suggestions.set(key, {
+        data: suggestions,
+        timestamp: Date.now()
+      })
+      
+      // Increment counter for suggestions generated
+      await simpleCounter.incrementCounter(userId, simpleCounter.CATEGORIES.API_CALLS)
     } catch (error) {
       console.error("Failed to cache suggestions:", error)
     }
