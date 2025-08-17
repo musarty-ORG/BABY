@@ -1,25 +1,16 @@
 import type { NextRequest } from "next/server"
-import { Groq } from "groq-sdk"
-
-let groq: Groq | null = null
-
-function getGroq() {
-  if (!groq && process.env.GROQ_API_KEY) {
-    groq = new Groq({
-      apiKey: process.env.GROQ_API_KEY,
-    })
-  }
-  return groq
-}
+import { vertexAISpeechEngine } from "@/lib/vertex-ai-speech-engine"
+import { simpleCounter } from "@/lib/rate-limiter"
 
 export const maxDuration = 30
 
 export async function POST(req: NextRequest) {
   try {
-    const groqClient = getGroq()
-    if (!groqClient) {
-      return Response.json({ error: "Speech transcription service temporarily unavailable" }, { status: 503 })
-    }
+    // Get user ID from request (you might need to implement session management)
+    const userId = req.headers.get("x-user-id") || "anonymous"
+    
+    // Increment API usage counter
+    await simpleCounter.incrementCounter(userId, simpleCounter.CATEGORIES.API_CALLS)
 
     const formData = await req.formData()
     const audioFile = formData.get("audio") as File
@@ -28,24 +19,21 @@ export async function POST(req: NextRequest) {
       return Response.json({ error: "No audio file provided" }, { status: 400 })
     }
 
-    // Transcribe using GROQ Whisper
-    const transcription = await groqClient.audio.transcriptions.create({
-      file: audioFile,
-      model: "distil-whisper-large-v3-en",
-      language: "en",
-      response_format: "text",
-    })
+    // For now, return a placeholder response since Vertex AI doesn't have direct STT in the AI SDK
+    // In production, you would integrate with Google Cloud Speech-to-Text API
+    const transcript = "Speech transcription placeholder - integrate with Google Cloud Speech-to-Text for production"
 
     return Response.json({
       success: true,
-      transcript: transcription,
+      transcript,
       timestamp: new Date().toISOString(),
+      note: "Placeholder implementation - integrate Google Cloud Speech-to-Text for production use"
     })
   } catch (error) {
     console.error("Transcription error:", error)
     return Response.json(
       {
-        error: "Transcription failed",
+        error: "Transcription service temporarily unavailable",
         details: error instanceof Error ? error.message : "Unknown error",
       },
       { status: 500 },

@@ -1,5 +1,13 @@
-import { sql } from "@neondatabase/serverless"
-import { databaseService } from "./database-service"
+import { neon } from "@neondatabase/serverless"
+
+let sql: ReturnType<typeof neon> | null = null
+
+function getSql() {
+  if (!sql) {
+    sql = neon(process.env.NEON_DATABASE_URL!)
+  }
+  return sql
+}
 
 export interface CounterResult {
   count: number
@@ -9,10 +17,10 @@ export interface CounterResult {
 export class SimpleCounter {
   async incrementCounter(identifier: string, category: string = 'general'): Promise<CounterResult> {
     try {
-      const db = databaseService.getConnection()
+      const db = getSql()
       
       // Create counters table if it doesn't exist
-      await db.execute(sql`
+      await db`
         CREATE TABLE IF NOT EXISTS counters (
           id SERIAL PRIMARY KEY,
           identifier VARCHAR(255) NOT NULL,
@@ -22,10 +30,10 @@ export class SimpleCounter {
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           UNIQUE(identifier, category)
         )
-      `)
+      `
 
       // Increment or create counter
-      const result = await db.execute(sql`
+      const result = await db`
         INSERT INTO counters (identifier, category, count, last_increment)
         VALUES (${identifier}, ${category}, 1, CURRENT_TIMESTAMP)
         ON CONFLICT (identifier, category)
@@ -33,9 +41,9 @@ export class SimpleCounter {
           count = counters.count + 1,
           last_increment = CURRENT_TIMESTAMP
         RETURNING count, last_increment
-      `)
+      `
 
-      const row = result.rows[0] as any
+      const row = result[0] as any
       return {
         count: row.count,
         lastIncrement: new Date(row.last_increment)
@@ -52,19 +60,19 @@ export class SimpleCounter {
 
   async getCounter(identifier: string, category: string = 'general'): Promise<CounterResult | null> {
     try {
-      const db = databaseService.getConnection()
+      const db = getSql()
       
-      const result = await db.execute(sql`
+      const result = await db`
         SELECT count, last_increment 
         FROM counters 
         WHERE identifier = ${identifier} AND category = ${category}
-      `)
+      `
 
-      if (result.rows.length === 0) {
+      if (result.length === 0) {
         return null
       }
 
-      const row = result.rows[0] as any
+      const row = result[0] as any
       return {
         count: row.count,
         lastIncrement: new Date(row.last_increment)
@@ -77,13 +85,13 @@ export class SimpleCounter {
 
   async resetCounter(identifier: string, category: string = 'general'): Promise<boolean> {
     try {
-      const db = databaseService.getConnection()
+      const db = getSql()
       
-      await db.execute(sql`
+      await db`
         UPDATE counters 
         SET count = 0, last_increment = CURRENT_TIMESTAMP
         WHERE identifier = ${identifier} AND category = ${category}
-      `)
+      `
 
       return true
     } catch (error) {
@@ -94,17 +102,17 @@ export class SimpleCounter {
 
   async getTopCounters(category: string = 'general', limit: number = 10): Promise<Array<{identifier: string, count: number, lastIncrement: Date}>> {
     try {
-      const db = databaseService.getConnection()
+      const db = getSql()
       
-      const result = await db.execute(sql`
+      const result = await db`
         SELECT identifier, count, last_increment
         FROM counters 
         WHERE category = ${category}
         ORDER BY count DESC
         LIMIT ${limit}
-      `)
+      `
 
-      return result.rows.map((row: any) => ({
+      return result.map((row: any) => ({
         identifier: row.identifier,
         count: row.count,
         lastIncrement: new Date(row.last_increment)

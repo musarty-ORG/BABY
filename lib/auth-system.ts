@@ -1,10 +1,5 @@
-import { Redis } from "@upstash/redis"
 import { databaseService, type User } from "./database-service"
-
-const redis = new Redis({
-  url: process.env.UPSTASH_REDIS_REST_URL!,
-  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
-})
+import { simpleCounter } from "./rate-limiter"
 
 export interface Session {
   userId: string
@@ -14,14 +9,22 @@ export interface Session {
 }
 
 export class AuthSystem {
-  private readonly OTP_EXPIRY = 10 * 60 // 10 minutes
-  private readonly SESSION_EXPIRY = 24 * 60 * 60 // 24 hours
+  private otpStorage = new Map<string, { otp: string; timestamp: number }>()
+  private sessionStorage = new Map<string, Session>()
+  private readonly OTP_EXPIRY = 10 * 60 * 1000 // 10 minutes in ms
+  private readonly SESSION_EXPIRY = 24 * 60 * 60 * 1000 // 24 hours in ms
 
   async generateOTP(email: string): Promise<string> {
     const otp = Math.random().toString().slice(2, 8).padStart(6, "0")
-    const key = `otp:${email}`
+    
+    // Store OTP with timestamp
+    this.otpStorage.set(email, {
+      otp,
+      timestamp: Date.now()
+    })
 
-    await redis.setex(key, this.OTP_EXPIRY, otp)
+    // Track OTP generation
+    await simpleCounter.incrementCounter(email, simpleCounter.CATEGORIES.LOGINS)
 
     // In production, send email here
     console.log(`[AUTH] OTP for ${email}: ${otp}`)
@@ -30,11 +33,20 @@ export class AuthSystem {
   }
 
   async verifyOTP(email: string, otp: string): Promise<boolean> {
-    const key = `otp:${email}`
-    const storedOTP = await redis.get(key)
+    const stored = this.otpStorage.get(email)
+    
+    if (!stored) {
+      return false
+    }
 
-    if (storedOTP === otp) {
-      await redis.del(key) // Delete used OTP
+    // Check if OTP has expired
+    if (Date.now() - stored.timestamp > this.OTP_EXPIRY) {
+      this.otpStorage.delete(email)
+      return false
+    }
+
+    if (stored.otp === otp) {
+      this.otpStorage.delete(email) // Delete used OTP
       return true
     }
 
@@ -47,10 +59,11 @@ export class AuthSystem {
       userId: user.id,
       email: user.email,
       role: user.role,
-      expiresAt: Date.now() + this.SESSION_EXPIRY * 1000,
+      expiresAt: Date.now() + this.SESSION_EXPIRY,
     }
 
-    await redis.setex(`session:${sessionId}`, this.SESSION_EXPIRY, JSON.stringify(session))
+    // Store session in memory
+    this.sessionStorage.set(sessionId, session)
 
     // Update last login in database
     await databaseService.updateUserLastLogin(user.email)
@@ -60,13 +73,11 @@ export class AuthSystem {
 
   async validateSession(sessionId: string): Promise<Session | null> {
     try {
-      const sessionData = await redis.get(`session:${sessionId}`)
-      if (!sessionData) return null
-
-      const session: Session = JSON.parse(sessionData as string)
+      const session = this.sessionStorage.get(sessionId)
+      if (!session) return null
 
       if (session.expiresAt < Date.now()) {
-        await redis.del(`session:${sessionId}`)
+        this.sessionStorage.delete(sessionId)
         return null
       }
 
@@ -78,7 +89,7 @@ export class AuthSystem {
   }
 
   async destroySession(sessionId: string): Promise<void> {
-    await redis.del(`session:${sessionId}`)
+    this.sessionStorage.delete(sessionId)
   }
 
   async getOrCreateUser(email: string): Promise<User> {

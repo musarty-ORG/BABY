@@ -1,25 +1,8 @@
 "use client"
 
-import { Redis } from "@upstash/redis"
-import { searchEngine } from "./search-engine"
-
-// Initialize Redis for behavior tracking with Upstash fromEnv() method
-const redis = (() => {
-  try {
-    if (process.env.USE_LOCAL_REDIS === "true") {
-      return new Redis({ url: process.env.LOCAL_REDIS_URL || "redis://localhost:6379" })
-    } else if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
-      // Use the recommended fromEnv() method for automatic environment variable loading
-      return Redis.fromEnv()
-    } else {
-      console.warn("Upstash Redis not configured properly. Missing UPSTASH_REDIS_REST_URL or UPSTASH_REDIS_REST_TOKEN")
-      return null
-    }
-  } catch (error) {
-    console.error("Upstash Redis initialization failed:", error)
-    return null
-  }
-})()
+import { crawlEngine } from "./crawl-engine"
+import { simpleCounter } from "./rate-limiter"
+import { anthropicService } from "./anthropic-service"
 
 export interface UserBehavior {
   userId: string
@@ -89,55 +72,41 @@ export interface PredictiveInsight {
 }
 
 export class PredictiveEvolutionEngine {
-  private readonly BEHAVIOR_TTL = 86400 * 30 // 30 days
-  private readonly ANALYSIS_CACHE_TTL = 3600 // 1 hour
+  private behaviorStorage = new Map<string, { data: UserBehavior; timestamp: number }>()
+  private patternStorage = new Map<string, { data: any; timestamp: number }>()
+  private readonly BEHAVIOR_TTL = 86400 * 30 * 1000 // 30 days in ms
+  private readonly ANALYSIS_CACHE_TTL = 3600 * 1000 // 1 hour in ms
 
   // Behavior Learning System
   async trackUserBehavior(behavior: UserBehavior): Promise<void> {
-    if (!redis) {
-      console.warn("Redis not available, skipping behavior tracking")
-      return
-    }
-
     try {
       const behaviorKey = `behavior:${behavior.userId}:${Date.now()}`
       const patternKey = `patterns:${behavior.userId}:${behavior.context.projectType}`
 
-      // Store individual behavior
-      await redis.setex(behaviorKey, this.BEHAVIOR_TTL, JSON.stringify(behavior))
+      // Store individual behavior in memory
+      this.behaviorStorage.set(behaviorKey, {
+        data: behavior,
+        timestamp: Date.now()
+      })
 
-      // Update behavior patterns
-      const existingPatterns = await redis.get(patternKey)
-      let patterns = {}
+      // Increment counter for user behavior tracking
+      await simpleCounter.incrementCounter(behavior.userId, simpleCounter.CATEGORIES.USER_ACTIONS)
 
-      if (existingPatterns) {
-        try {
-          patterns = JSON.parse(existingPatterns as string)
-        } catch (parseError) {
-          console.warn("Failed to parse existing patterns, starting fresh:", parseError)
-          patterns = {}
-        }
-      }
+      // Update patterns with simple aggregation
+      const existingPatterns = this.patternStorage.get(patternKey)
+      let patterns = existingPatterns?.data || {}
 
       if (!patterns[behavior.action]) {
-        patterns[behavior.action] = { count: 0, successRate: 0, avgTime: 0 }
+        patterns[behavior.action] = 0
       }
+      patterns[behavior.action]++
 
-      patterns[behavior.action].count++
-      patterns[behavior.action].successRate =
-        (patterns[behavior.action].successRate * (patterns[behavior.action].count - 1) +
-          (behavior.context.success ? 1 : 0)) /
-        patterns[behavior.action].count
-      patterns[behavior.action].avgTime =
-        (patterns[behavior.action].avgTime * (patterns[behavior.action].count - 1) + behavior.context.timeSpent) /
-        patterns[behavior.action].count
-
-      await redis.setex(patternKey, this.BEHAVIOR_TTL, JSON.stringify(patterns))
-
-      console.log(`Tracked behavior: ${behavior.action} for user ${behavior.userId}`)
+      this.patternStorage.set(patternKey, {
+        data: patterns,
+        timestamp: Date.now()
+      })
     } catch (error) {
       console.error("Failed to track user behavior:", error)
-      // Don't throw error, just log it so the main functionality continues
     }
   }
 
@@ -706,7 +675,7 @@ export class PredictiveEvolutionEngine {
 
     try {
       const patternKey = `patterns:${userId}:${projectType}`
-      const patterns = await redis.get(patternKey)
+      // const patterns = {}; // await redis.get(patternKey)
 
       if (patterns) {
         let behaviorData

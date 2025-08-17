@@ -1,6 +1,6 @@
-import { groq } from "@ai-sdk/groq"
-import { generateText } from "ai"
-import { groqSpeechEngine, type VoiceOption, VOICE_OPTIONS } from "./groq-speech-engine"
+import { anthropicService } from "./anthropic-service"
+import { vertexAISpeechEngine, type VoiceOption, VOICE_OPTIONS } from "./vertex-ai-speech-engine"
+import { simpleCounter } from "./rate-limiter"
 
 export interface VoiceCommand {
   transcript: string
@@ -71,7 +71,7 @@ export class MultiModalEngine {
   // Voice Command Processing with GROQ STT
   async startVoiceListening(onCommand: (command: VoiceCommand) => void): Promise<void> {
     try {
-      await groqSpeechEngine.startRecording()
+      await vertexAISpeechEngine.startRecording()
     } catch (error) {
       console.error("Failed to start voice listening:", error)
       throw new Error("Microphone access denied or not available")
@@ -80,7 +80,7 @@ export class MultiModalEngine {
 
   async stopVoiceListening(): Promise<VoiceCommand | null> {
     try {
-      const transcript = await groqSpeechEngine.stopRecording()
+      const transcript = await vertexAISpeechEngine.stopRecording()
       if (transcript.trim()) {
         const command = await this.processVoiceCommand(transcript, 0.9)
         return command
@@ -93,18 +93,18 @@ export class MultiModalEngine {
   }
 
   cancelVoiceListening(): void {
-    groqSpeechEngine.cancelRecording()
+    vertexAISpeechEngine.cancelRecording()
   }
 
   isRecording(): boolean {
-    return groqSpeechEngine.isCurrentlyRecording()
+    return vertexAISpeechEngine.isCurrentlyRecording()
   }
 
   // Text-to-Speech with GROQ TTS
   async speakText(text: string, voice?: string): Promise<void> {
     const voiceToUse = voice || this.selectedVoice
     try {
-      await groqSpeechEngine.speakText(text, voiceToUse)
+      await vertexAISpeechEngine.speakText(text, voiceToUse)
     } catch (error) {
       console.error("Failed to speak text:", error)
       throw error
@@ -114,7 +114,7 @@ export class MultiModalEngine {
   async synthesizeSpeech(text: string, voice?: string): Promise<ArrayBuffer> {
     const voiceToUse = voice || this.selectedVoice
     try {
-      return await groqSpeechEngine.synthesizeSpeech(text, voiceToUse)
+      return await vertexAISpeechEngine.synthesizeSpeech(text, voiceToUse)
     } catch (error) {
       console.error("Failed to synthesize speech:", error)
       throw error
@@ -239,11 +239,9 @@ Focus on CSS properties, component modifications, or code changes needed.
 Return a JSON object with enhanced parameters.`
 
     const result = await this.safeApiCall(async () => {
-      return await generateText({
-        model: groq("meta-llama/llama-4-scout-17b-16e-instruct"),
-        prompt: enhancementPrompt,
-        system: "You are a voice command interpreter for a code editor.",
-      })
+      // Increment counter for API usage
+      await simpleCounter.incrementCounter("multi-modal", simpleCounter.CATEGORIES.API_CALLS)
+      return await anthropicService.generateText(enhancementPrompt)
     })
 
     if (!result) {
@@ -287,14 +285,11 @@ Analyze and return:
 
 Focus on recreating this design with modern web technologies.`
 
-      const result = await generateText({
-        model: groq("meta-llama/llama-4-scout-17b-16e-instruct"),
-        prompt: analysisPrompt,
-        system:
-          "You are an expert UI/UX analyzer. Convert visual designs to technical specifications for web development.",
-      })
+      // Increment counter for API usage
+      await simpleCounter.incrementCounter("multi-modal", simpleCounter.CATEGORIES.API_CALLS)
+      const result = await anthropicService.generateText(analysisPrompt)
 
-      return this.parseImageAnalysis(result.text)
+      return this.parseImageAnalysis(result)
     } catch (error) {
       console.error("Image analysis failed:", error)
       throw new Error("Failed to analyze image")
@@ -317,13 +312,11 @@ Use Tailwind CSS for styling.
 Include responsive design considerations.
 Make it production-ready with proper component structure.`
 
-    const result = await generateText({
-      model: groq("meta-llama/llama-4-scout-17b-16e-instruct"),
-      prompt: codePrompt,
-      system: `You are a senior ${framework} developer. Convert UI designs to clean, production-ready code.`,
-    })
+    // Increment counter for API usage
+    await simpleCounter.incrementCounter("multi-modal", simpleCounter.CATEGORIES.API_CALLS)
+    const result = await anthropicService.generateText(codePrompt)
 
-    return result.text
+    return result
   }
 
   // Utility Methods
@@ -473,11 +466,9 @@ Image: ${imageData.substring(0, 100)}...
 Provide detailed analysis for app development.`
 
       const result = await this.safeApiCall(async () => {
-        return await generateText({
-          model: groq("meta-llama/llama-4-scout-17b-16e-instruct"),
-          prompt: sketchPrompt,
-          system: "You are an expert UX analyst. Convert sketches and wireframes to technical specifications.",
-        })
+        // Increment counter for API usage
+        await simpleCounter.incrementCounter("multi-modal", simpleCounter.CATEGORIES.API_CALLS)
+        return await anthropicService.generateText(sketchPrompt)
       })
 
       if (!result) {
@@ -553,11 +544,9 @@ Based on typical video analysis, provide:
 Focus on extracting actionable development requirements.`
 
       const result = await this.safeApiCall(async () => {
-        return await generateText({
-          model: groq("meta-llama/llama-4-scout-17b-16e-instruct"),
-          prompt: videoPrompt,
-          system: "You are a video analysis expert for software development. Extract requirements from video content.",
-        })
+        // Increment counter for API usage
+        await simpleCounter.incrementCounter("multi-modal", simpleCounter.CATEGORIES.API_CALLS)
+        return await anthropicService.generateText(videoPrompt)
       })
 
       if (!result) {
