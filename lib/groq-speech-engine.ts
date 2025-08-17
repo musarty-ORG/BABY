@@ -14,20 +14,28 @@ export const VOICE_OPTIONS: VoiceOption[] = [
 ]
 
 export class GroqSpeechEngine {
-  private groq: Groq
+  private groq: Groq | null = null
   private mediaRecorder: MediaRecorder | null = null
   private audioChunks: Blob[] = []
   private isRecording = false
 
   constructor() {
-    this.groq = new Groq({
-      apiKey: process.env.GROQ_API_KEY,
-      dangerouslyAllowBrowser: true, // Only for client-side usage
-    })
+    // Only initialize if API key is available
+    if (process.env.GROQ_API_KEY) {
+      this.groq = new Groq({
+        apiKey: process.env.GROQ_API_KEY,
+        dangerouslyAllowBrowser: true, // Only for client-side usage
+      })
+    } else {
+      console.warn('GROQ_API_KEY not available - speech features will be disabled')
+    }
   }
 
   private async validateConnection(): Promise<boolean> {
     try {
+      if (!this.groq) {
+        return false
+      }
       if (!process.env.GROQ_API_KEY) {
         throw new Error("GROQ_API_KEY not configured")
       }
@@ -111,7 +119,7 @@ export class GroqSpeechEngine {
       // Convert blob to File for GROQ API
       const audioFile = new File([audioBlob], "recording.webm", { type: "audio/webm" })
 
-      const transcription = await this.groq.audio.transcriptions.create({
+      const transcription = await this.groq!.audio.transcriptions.create({
         file: audioFile,
         model: "distil-whisper-large-v3-en",
         language: "en", // English only as requested

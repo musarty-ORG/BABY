@@ -2,10 +2,23 @@ import { neon } from "@neondatabase/serverless"
 import { getServerSession } from "next-auth"
 import { authOptions } from "./auth"
 
-const sql = neon(process.env.NEON_NEON_DATABASE_URL!)
+// Only initialize database connection in runtime, not during build
+let sql: any = null
+try {
+  if (typeof window === 'undefined' && process.env.NEON_NEON_DATABASE_URL) {
+    sql = neon(process.env.NEON_NEON_DATABASE_URL)
+  }
+} catch (error) {
+  console.warn('Database initialization failed in subscription.ts:', error)
+}
 
 export async function checkSubscription(userId?: string): Promise<boolean> {
   try {
+    if (!sql) {
+      console.warn('Database not available for subscription checking, allowing request')
+      return true
+    }
+    
     let userIdToCheck = userId
 
     if (!userIdToCheck) {

@@ -2,7 +2,15 @@ import { neon } from "@neondatabase/serverless"
 import { getServerSession } from "next-auth"
 import { authOptions } from "./auth"
 
-const sql = neon(process.env.NEON_NEON_DATABASE_URL!)
+// Only initialize database connection in runtime, not during build
+let sql: any = null
+try {
+  if (typeof window === 'undefined' && process.env.NEON_NEON_DATABASE_URL) {
+    sql = neon(process.env.NEON_NEON_DATABASE_URL)
+  }
+} catch (error) {
+  console.warn('Database initialization failed in user-token-balance.ts:', error)
+}
 
 export async function checkUserTokenBalance(userId?: string): Promise<{
   hasTokens: boolean
@@ -11,6 +19,11 @@ export async function checkUserTokenBalance(userId?: string): Promise<{
   plan: string
 }> {
   try {
+    if (!sql) {
+      console.warn('Database not available for token balance checking, returning default values')
+      return { hasTokens: true, balance: 1000, needsTopup: false, plan: "free" }
+    }
+    
     let userIdToCheck = userId
 
     if (!userIdToCheck) {

@@ -1,6 +1,14 @@
 import { neon } from "@neondatabase/serverless"
 
-const sql = neon(process.env.NEON_NEON_DATABASE_URL!)
+// Only initialize database connection in runtime, not during build
+let sql: any = null
+try {
+  if (typeof window === 'undefined' && process.env.NEON_NEON_DATABASE_URL) {
+    sql = neon(process.env.NEON_NEON_DATABASE_URL)
+  }
+} catch (error) {
+  console.warn('Database initialization failed:', error)
+}
 
 export interface User {
   id: string
@@ -83,9 +91,17 @@ export interface PayPalCustomer {
 }
 
 export class DatabaseService {
+  private checkConnection() {
+    if (!sql) {
+      throw new Error("Database connection not available - missing NEON_NEON_DATABASE_URL environment variable")
+    }
+    return sql
+  }
+
   // User operations
   async createUser(user: Omit<User, "created_at" | "last_login">): Promise<User> {
-    const result = await sql`
+    const db = this.checkConnection()
+    const result = await db`
       INSERT INTO users (id, email, name, role, status, metadata)
       VALUES (${user.id}, ${user.email}, ${user.name || null}, ${user.role}, ${user.status}, ${JSON.stringify(user.metadata || {})})
       RETURNING *
@@ -94,7 +110,8 @@ export class DatabaseService {
   }
 
   async getUserByEmail(email: string): Promise<User | null> {
-    const result = await sql`
+    const db = this.checkConnection()
+    const result = await db`
       SELECT * FROM users WHERE email = ${email} LIMIT 1
     `
     return result.length > 0 ? this.mapUserRow(result[0]) : null

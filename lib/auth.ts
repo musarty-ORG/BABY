@@ -2,7 +2,15 @@ import type { NextAuthOptions } from "next-auth"
 import CredentialsProvider from "next-auth/providers/credentials"
 import { neon } from "@neondatabase/serverless"
 
-const sql = neon(process.env.NEON_NEON_DATABASE_URL!)
+// Only initialize database connection in runtime, not during build
+let sql: any = null
+try {
+  if (typeof window === 'undefined' && process.env.NEON_NEON_DATABASE_URL) {
+    sql = neon(process.env.NEON_NEON_DATABASE_URL)
+  }
+} catch (error) {
+  console.warn('Database initialization failed in auth.ts:', error)
+}
 
 export const authOptions: NextAuthOptions = {
   providers: [

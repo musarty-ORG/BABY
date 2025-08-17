@@ -55,6 +55,17 @@ export class MultiModalEngine {
     // Initialize with default voice
   }
 
+  private isGroqAvailable(): boolean {
+    return !!(process.env.GROQ_API_KEY)
+  }
+
+  private createGroqModel() {
+    if (!this.isGroqAvailable()) {
+      throw new Error("GROQ_API_KEY not available")
+    }
+    return groq("meta-llama/llama-4-scout-17b-16e-instruct")
+  }
+
   // Voice Configuration
   setVoice(voiceId: string): void {
     this.selectedVoice = voiceId
@@ -209,6 +220,11 @@ export class MultiModalEngine {
   }
 
   private async safeApiCall<T>(operation: () => Promise<T>, retries = 2): Promise<T | null> {
+    if (!this.isGroqAvailable()) {
+      console.warn('GROQ API not available - skipping API call')
+      return null
+    }
+    
     for (let i = 0; i <= retries; i++) {
       try {
         return await operation()
@@ -240,7 +256,7 @@ Return a JSON object with enhanced parameters.`
 
     const result = await this.safeApiCall(async () => {
       return await generateText({
-        model: groq("meta-llama/llama-4-scout-17b-16e-instruct"),
+        model: this.createGroqModel(),
         prompt: enhancementPrompt,
         system: "You are a voice command interpreter for a code editor.",
       })
@@ -288,7 +304,7 @@ Analyze and return:
 Focus on recreating this design with modern web technologies.`
 
       const result = await generateText({
-        model: groq("meta-llama/llama-4-scout-17b-16e-instruct"),
+        model: this.createGroqModel(),
         prompt: analysisPrompt,
         system:
           "You are an expert UI/UX analyzer. Convert visual designs to technical specifications for web development.",
@@ -302,9 +318,10 @@ Focus on recreating this design with modern web technologies.`
   }
 
   async imageToCode(imageFile: File | string, framework = "react"): Promise<string> {
-    const analysis = await this.analyzeImage(imageFile)
+    try {
+      const analysis = await this.analyzeImage(imageFile)
 
-    const codePrompt = `Convert this UI analysis to ${framework} code:
+      const codePrompt = `Convert this UI analysis to ${framework} code:
 
 Description: ${analysis.description}
 Layout: ${analysis.layout}
@@ -317,13 +334,21 @@ Use Tailwind CSS for styling.
 Include responsive design considerations.
 Make it production-ready with proper component structure.`
 
-    const result = await generateText({
-      model: groq("meta-llama/llama-4-scout-17b-16e-instruct"),
-      prompt: codePrompt,
-      system: `You are a senior ${framework} developer. Convert UI designs to clean, production-ready code.`,
-    })
+      const result = await generateText({
+        model: this.createGroqModel(),
+        prompt: codePrompt,
+        system: `You are a senior ${framework} developer. Convert UI designs to clean, production-ready code.`,
+      })
 
-    return result.text
+      return result.text
+    } catch (error) {
+      console.error("Image to code conversion failed:", error)
+      return `// Error: Unable to generate code from image
+// ${error instanceof Error ? error.message : 'Unknown error'}
+export default function GeneratedComponent() {
+  return <div>Error generating component</div>
+}`
+    }
   }
 
   // Utility Methods
@@ -474,7 +499,7 @@ Provide detailed analysis for app development.`
 
       const result = await this.safeApiCall(async () => {
         return await generateText({
-          model: groq("meta-llama/llama-4-scout-17b-16e-instruct"),
+          model: this.createGroqModel(),
           prompt: sketchPrompt,
           system: "You are an expert UX analyst. Convert sketches and wireframes to technical specifications.",
         })
@@ -554,7 +579,7 @@ Focus on extracting actionable development requirements.`
 
       const result = await this.safeApiCall(async () => {
         return await generateText({
-          model: groq("meta-llama/llama-4-scout-17b-16e-instruct"),
+          model: this.createGroqModel(),
           prompt: videoPrompt,
           system: "You are a video analysis expert for software development. Extract requirements from video content.",
         })

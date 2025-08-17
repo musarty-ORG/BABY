@@ -1,14 +1,24 @@
 import type { NextRequest } from "next/server"
 import { Groq } from "groq-sdk"
 
-const groq = new Groq({
-  apiKey: process.env.GROQ_API_KEY,
-})
+// Initialize Groq client only when API key is available
+let groq: Groq | null = null
+if (process.env.GROQ_API_KEY) {
+  groq = new Groq({
+    apiKey: process.env.GROQ_API_KEY,
+  })
+}
 
 export const maxDuration = 30
 
 export async function POST(req: NextRequest) {
   try {
+    if (!groq) {
+      return Response.json({ 
+        error: "Speech synthesis service unavailable - GROQ_API_KEY not configured" 
+      }, { status: 503 })
+    }
+    
     const body = await req.json()
     const { text, voice = "Cheyenne-PlayAI", format = "mp3" } = body
 

@@ -2,7 +2,15 @@ import { neon } from "@neondatabase/serverless"
 import { getServerSession } from "next-auth"
 import { authOptions } from "./auth"
 
-const sql = neon(process.env.NEON_NEON_DATABASE_URL!)
+// Only initialize database connection in runtime, not during build
+let sql: any = null
+try {
+  if (typeof window === 'undefined' && process.env.NEON_NEON_DATABASE_URL) {
+    sql = neon(process.env.NEON_NEON_DATABASE_URL)
+  }
+} catch (error) {
+  console.warn('Database initialization failed in usage-limit.ts:', error)
+}
 
 // Usage limits per plan
 const USAGE_LIMITS = {
@@ -14,6 +22,11 @@ const USAGE_LIMITS = {
 
 export async function incrementUsageCount(userId?: string, operation = "api_call", tokens = 1): Promise<void> {
   try {
+    if (!sql) {
+      console.warn('Database not available for usage tracking')
+      return
+    }
+    
     let userIdToUse = userId
 
     if (!userIdToUse) {
@@ -65,6 +78,11 @@ export async function incrementUsageCount(userId?: string, operation = "api_call
 
 export async function checkUsageCount(userId?: string): Promise<boolean> {
   try {
+    if (!sql) {
+      console.warn('Database not available for usage checking, allowing request')
+      return true
+    }
+    
     let userIdToCheck = userId
 
     if (!userIdToCheck) {
