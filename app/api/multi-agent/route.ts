@@ -7,6 +7,7 @@ import { openai } from "@ai-sdk/openai"
 import { anthropic } from "@ai-sdk/anthropic"
 import { streamText } from "ai"
 import { searchEngine } from "@/lib/search-engine"
+import { generateRegistryPrompt } from "@/lib/component-registries"
 import { withErrorHandler } from "@/lib/error-handler"
 import { multiAgentRequestSchema } from "@/lib/validation-schemas"
 import { requireAuth, checkRateLimit } from "@/lib/auth-middleware"
@@ -43,6 +44,8 @@ async function handleDualModelGeneration(request: PipelineRequest, session: any)
 
 ${realTimeKnowledge}
 
+${generateRegistryPrompt()}
+
 Generate a complete, production-ready website based on this request:
 
 ${request.prompt}
@@ -54,6 +57,8 @@ Requirements:
 - Include error handling and loading states
 - Use current best practices for performance and SEO
 - Make it visually appealing and professional
+- Prefer using established component libraries (shadcn/ui, Headless UI, Radix UI, Chakra UI)
+- Include proper installation commands in comments
 
 Generate clean, functional code ready for deployment.`
 
