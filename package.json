@@ -9,8 +9,9 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@ai-sdk/groq": "latest",
-    "@ai-sdk/openai": "latest",
+    "@ai-sdk/anthropic": "^2.0.4",
+    "@ai-sdk/groq": "^2.0.10",
+    "@ai-sdk/openai": "^2.0.15",
     "@auth/core": "latest",
     "@hookform/resolvers": "^3.9.1",
     "@neondatabase/serverless": "latest",

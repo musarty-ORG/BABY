@@ -1,15 +1,36 @@
 "use client"
 
-import { useChat } from "ai/react"
+// import { useChat } from "ai/react"
+// Temporary fix - using manual state management instead of useChat
 import { useState, useRef, useEffect } from "react"
 import { Send, Terminal, Zap, Code, Shield, Brain, ArrowRight, Sparkles, Cpu, Globe, Rocket } from 'lucide-react'
 import Link from "next/link"
 
 export default function CodeHomieHome() {
   const [selectedModel, setSelectedModel] = useState<"scout" | "maverick">("scout")
-  const { messages, input, handleInputChange, handleSubmit, isLoading } = useChat({
-    body: { model: selectedModel },
-  })
+  const [messages, setMessages] = useState<any[]>([])
+  const [input, setInput] = useState("")
+  const [isLoading, setIsLoading] = useState(false)
+  
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setInput(e.target.value)
+  }
+  
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!input.trim()) return
+    
+    setIsLoading(true)
+    // This is a placeholder - in a real implementation you'd call your API
+    setMessages(prev => [...prev, { role: 'user', content: input }])
+    setInput("")
+    
+    // Simulate AI response
+    setTimeout(() => {
+      setMessages(prev => [...prev, { role: 'assistant', content: `AI response for: ${input}` }])
+      setIsLoading(false)
+    }, 1000)
+  }
   const [isTyping, setIsTyping] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
