@@ -14,7 +14,10 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     const webhook = await req.json()
     const eventType = webhook.event_type
 
-    console.log(`[PAYPAL_WEBHOOK] Received: ${eventType}`)
+    // Log webhook events for debugging in development only
+    if (process.env.NODE_ENV === 'development') {
+      if (process.env.NODE_ENV === "development") console.log(`[PAYPAL_WEBHOOK] Received: ${eventType}`)
+    }
 
     switch (eventType) {
       case "BILLING.SUBSCRIPTION.CREATED":
@@ -38,7 +41,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
         break
 
       default:
-        console.log(`[PAYPAL_WEBHOOK] Unhandled event: ${eventType}`)
+        if (process.env.NODE_ENV === "development") console.log(`[PAYPAL_WEBHOOK] Unhandled event: ${eventType}`)
     }
 
     return NextResponse.json({ success: true, message: "Webhook processed successfully" })
@@ -54,7 +57,7 @@ async function handleSubscriptionCreated(webhook: any) {
   const subscriptionId = subscription.id
   const planId = subscription.plan_id
 
-  console.log(`[WEBHOOK] Subscription created: ${subscriptionId}, Plan: ${planId}`)
+  if (process.env.NODE_ENV === "development") console.log(`[WEBHOOK] Subscription created: ${subscriptionId}, Plan: ${planId}`)
 
   try {
     // Update subscription status in database
@@ -67,7 +70,7 @@ async function handleSubscriptionCreated(webhook: any) {
       },
     })
 
-    console.log(`[WEBHOOK] Subscription ${subscriptionId} marked as CREATED`)
+    if (process.env.NODE_ENV === "development") console.log(`[WEBHOOK] Subscription ${subscriptionId} marked as CREATED`)
   } catch (error) {
     console.error(`[WEBHOOK] Error handling subscription created:`, error)
   }
@@ -78,7 +81,7 @@ async function handlePaymentSaleCompleted(webhook: any) {
   const payment = webhook.resource
   const paymentId = payment.id
 
-  console.log(`[WEBHOOK] Payment completed: ${paymentId}`)
+  if (process.env.NODE_ENV === "development") console.log(`[WEBHOOK] Payment completed: ${paymentId}`)
 
   try {
     // Check if this is a top-up purchase by looking for order metadata
@@ -96,9 +99,9 @@ async function handlePaymentSaleCompleted(webhook: any) {
         "topup",
       )
 
-      console.log(`[WEBHOOK] Credited ${messages} top-up messages to user ${userId}`)
+      if (process.env.NODE_ENV === "development") console.log(`[WEBHOOK] Credited ${messages} top-up messages to user ${userId}`)
     } else {
-      console.log(`[WEBHOOK] Payment ${paymentId} not identified as top-up purchase`)
+      if (process.env.NODE_ENV === "development") console.log(`[WEBHOOK] Payment ${paymentId} not identified as top-up purchase`)
     }
   } catch (error) {
     console.error(`[WEBHOOK] Error handling payment completed:`, error)
@@ -110,7 +113,7 @@ async function handleSubscriptionCancelled(webhook: any) {
   const subscription = webhook.resource
   const subscriptionId = subscription.id
 
-  console.log(`[WEBHOOK] Subscription cancelled: ${subscriptionId}`)
+  if (process.env.NODE_ENV === "development") console.log(`[WEBHOOK] Subscription cancelled: ${subscriptionId}`)
 
   try {
     // Get subscription from database
@@ -139,7 +142,7 @@ async function handleSubscriptionCancelled(webhook: any) {
       },
     })
 
-    console.log(`[WEBHOOK] Account frozen for user ${dbSubscription.user_id}`)
+    if (process.env.NODE_ENV === "development") console.log(`[WEBHOOK] Account frozen for user ${dbSubscription.user_id}`)
   } catch (error) {
     console.error(`[WEBHOOK] Error handling subscription cancelled:`, error)
   }
@@ -151,7 +154,7 @@ async function handleSubscriptionActivated(webhook: any) {
   const subscriptionId = subscription.id
   const planId = subscription.plan_id
 
-  console.log(`[WEBHOOK] Subscription activated: ${subscriptionId}, Plan: ${planId}`)
+  if (process.env.NODE_ENV === "development") console.log(`[WEBHOOK] Subscription activated: ${subscriptionId}, Plan: ${planId}`)
 
   try {
     // Get subscription from database
@@ -186,7 +189,7 @@ async function handleSubscriptionActivated(webhook: any) {
         },
       })
 
-      console.log(`[WEBHOOK] Reset monthly bucket: ${planConfig.messages} messages for user ${dbSubscription.user_id}`)
+      if (process.env.NODE_ENV === "development") console.log(`[WEBHOOK] Reset monthly bucket: ${planConfig.messages} messages for user ${dbSubscription.user_id}`)
     }
   } catch (error) {
     console.error(`[WEBHOOK] Error handling subscription activated:`, error)
@@ -199,7 +202,7 @@ async function handleSubscriptionRenewed(webhook: any) {
   const subscriptionId = subscription.id
   const planId = subscription.plan_id
 
-  console.log(`[WEBHOOK] Subscription renewed: ${subscriptionId}, Plan: ${planId}`)
+  if (process.env.NODE_ENV === "development") console.log(`[WEBHOOK] Subscription renewed: ${subscriptionId}, Plan: ${planId}`)
 
   try {
     // Get subscription from database
@@ -223,7 +226,7 @@ async function handleSubscriptionRenewed(webhook: any) {
         },
       })
 
-      console.log(
+      if (process.env.NODE_ENV === "development") console.log(
         `[WEBHOOK] Monthly bucket renewed: ${planConfig.messages} messages for user ${dbSubscription.user_id}`,
       )
     }

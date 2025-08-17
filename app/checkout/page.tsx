@@ -424,7 +424,6 @@ export default function CheckoutPage() {
                 <h1 className="text-2xl font-bold bg-gradient-to-r from-purple-400 to-cyan-400 bg-clip-text text-transparent">
                   CODE HOMIE
                 </h1>
-                <p className="text-xs text-purple-300/70">HACK. STACK. HUSTLE.</p>
               </div>
             </div>
 
@@ -939,9 +938,8 @@ export default function CheckoutPage() {
         <div className="max-w-7xl mx-auto px-4 py-8">
           <div className="text-center">
             <p className="text-purple-500/70 text-sm">
-              Code Homie v2.1 | Powered by Llama 4 Scout & Maverick | Secure Neural Network
+              Code Homie | Professional AI Coding Assistant
             </p>
-            <p className="text-purple-500/50 text-xs mt-2">HACK. STACK. HUSTLE. | Your Legendary AI Coding Companion</p>
           </div>
         </div>
       </footer>

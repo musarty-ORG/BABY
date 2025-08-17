@@ -20,16 +20,8 @@ export default function CodeHomieHome() {
     e.preventDefault()
     if (!input.trim()) return
     
-    setIsLoading(true)
-    // This is a placeholder - in a real implementation you'd call your API
-    setMessages(prev => [...prev, { role: 'user', content: input }])
-    setInput("")
-    
-    // Simulate AI response
-    setTimeout(() => {
-      setMessages(prev => [...prev, { role: 'assistant', content: `AI response for: ${input}` }])
-      setIsLoading(false)
-    }, 1000)
+    // Redirect to the actual multi-agent interface
+    window.location.href = '/multi-agent'
   }
   const [isTyping, setIsTyping] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)

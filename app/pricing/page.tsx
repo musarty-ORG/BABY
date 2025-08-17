@@ -2,15 +2,61 @@
 
 import { useState, useEffect } from "react"
 import Link from "next/link"
-import { Check, Zap, ArrowRight, Sparkles, Star, Crown, Rocket } from "lucide-react"
+import { useSearchParams } from "next/navigation"
+import { Check, Zap, ArrowRight, Sparkles, Star, Crown, Rocket, CheckCircle, XCircle } from "lucide-react"
 
 export default function PricingPage() {
   const [billingCycle, setBillingCycle] = useState<"monthly" | "yearly">("monthly")
   const [userSession, setUserSession] = useState<any>(null)
   const [loading, setLoading] = useState(false)
+  const [notification, setNotification] = useState<{type: 'success' | 'error', message: string} | null>(null)
+  const searchParams = useSearchParams()
 
-  // Add useEffect to check for user session
+  // Add useEffect to check for user session and handle success/error params
   useEffect(() => {
+    // Handle success/error parameters from PayPal redirects
+    const success = searchParams.get('success')
+    const error = searchParams.get('error')
+    const messages = searchParams.get('messages')
+    
+    if (success) {
+      let message = ''
+      switch(success) {
+        case 'subscription_activated':
+          message = 'Subscription activated successfully! Welcome to Code Homie.'
+          break
+        case 'topup_completed':
+          message = `Top-up completed! ${messages || 'Credits'} added to your account.`
+          break
+        default:
+          message = 'Payment completed successfully!'
+      }
+      setNotification({ type: 'success', message })
+    } else if (error) {
+      let message = 'Payment failed. Please try again.'
+      switch(error) {
+        case 'payment_failed':
+          message = 'Payment failed. Please check your payment method and try again.'
+          break
+        case 'processing_failed':
+          message = 'Payment processing failed. Please contact support if this continues.'
+          break
+        default:
+          message = 'Payment failed. Please try again.'
+      }
+      setNotification({ type: 'error', message })
+    }
+
+    // Auto-hide notification after 10 seconds
+    if (success || error) {
+      const timer = setTimeout(() => {
+        setNotification(null)
+        // Clean up URL params
+        window.history.replaceState({}, '', '/pricing')
+      }, 10000)
+      return () => clearTimeout(timer)
+    }
+
     const sessionToken = localStorage.getItem("session_token")
     if (sessionToken) {
       // Fetch user info
@@ -27,7 +73,7 @@ export default function PricingPage() {
         })
         .catch(console.error)
     }
-  }, [])
+  }, [searchParams])
 
   // Add subscription handler
   const handleSubscription = async (plan: string) => {
@@ -100,7 +146,6 @@ export default function PricingPage() {
                 <h1 className="text-2xl font-bold bg-gradient-to-r from-purple-400 to-cyan-400 bg-clip-text text-transparent">
                   CODE HOMIE
                 </h1>
-                <p className="text-xs text-purple-300/70">HACK. STACK. HUSTLE.</p>
               </div>
             </div>
 
@@ -122,6 +167,32 @@ export default function PricingPage() {
           </div>
         </div>
       </header>
+
+      {/* Success/Error Notification */}
+      {notification && (
+        <div className="relative z-20 max-w-4xl mx-auto px-4 pt-6">
+          <div className={`p-4 rounded-lg border backdrop-blur-sm ${
+            notification.type === 'success' 
+              ? 'bg-green-500/10 border-green-500/30 text-green-300' 
+              : 'bg-red-500/10 border-red-500/30 text-red-300'
+          }`}>
+            <div className="flex items-center gap-3">
+              {notification.type === 'success' ? (
+                <CheckCircle className="w-5 h-5" />
+              ) : (
+                <XCircle className="w-5 h-5" />
+              )}
+              <span>{notification.message}</span>
+              <button
+                onClick={() => setNotification(null)}
+                className="ml-auto text-gray-400 hover:text-white"
+              >
+                ×
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Main Content */}
       <main className="relative z-10">
@@ -539,13 +610,7 @@ export default function PricingPage() {
         <div className="max-w-7xl mx-auto px-4 py-8">
           <div className="text-center">
             <p className="text-purple-500/70 text-sm">
-              Code Homie v2.1 | Powered by Llama 4 Scout & Maverick | Secure Neural Network
-            </p>
-            <p className="text-purple-500/50 text-xs mt-2">
-              HACK. STACK. HUSTLE. | Your Legendary AI Coding Companion |{" "}
-              <Link href="/admin" className="text-purple-500/50 hover:text-purple-500/70">
-                Danger
-              </Link>
+              Code Homie | Professional AI Coding Assistant
             </p>
           </div>
         </div>

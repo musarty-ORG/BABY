@@ -1,6 +1,4 @@
 import { neon } from "@neondatabase/serverless"
-import { getServerSession } from "next-auth"
-import { authOptions } from "./auth"
 
 const sql = neon(process.env.NEON_NEON_DATABASE_URL!)
 
@@ -12,16 +10,10 @@ const USAGE_LIMITS = {
   architect: 2000,
 }
 
-export async function incrementUsageCount(userId?: string, operation = "api_call", tokens = 1): Promise<void> {
+export async function incrementUsageCount(userId: string, operation = "api_call", tokens = 1): Promise<void> {
   try {
-    let userIdToUse = userId
-
-    if (!userIdToUse) {
-      const session = await getServerSession(authOptions)
-      if (!session?.user?.id) {
-        throw new Error("No user session found")
-      }
-      userIdToUse = session.user.id
+    if (!userId) {
+      throw new Error("User ID is required")
     }
 
     // Get current date for daily usage tracking
@@ -31,7 +23,7 @@ export async function incrementUsageCount(userId?: string, operation = "api_call
     const existingUsage = await sql`
       SELECT id, usage_count, tokens_used
       FROM daily_usage 
-      WHERE user_id = ${userIdToUse} AND date = ${today}
+      WHERE user_id = ${userId} AND date = ${today}
     `
 
     if (existingUsage.length > 0) {
@@ -42,20 +34,20 @@ export async function incrementUsageCount(userId?: string, operation = "api_call
           usage_count = usage_count + 1,
           tokens_used = tokens_used + ${tokens},
           updated_at = NOW()
-        WHERE user_id = ${userIdToUse} AND date = ${today}
+        WHERE user_id = ${userId} AND date = ${today}
       `
     } else {
       // Create new record
       await sql`
         INSERT INTO daily_usage (user_id, date, usage_count, tokens_used, operation_type)
-        VALUES (${userIdToUse}, ${today}, 1, ${tokens}, ${operation})
+        VALUES (${userId}, ${today}, 1, ${tokens}, ${operation})
       `
     }
 
     // Also log the specific operation
     await sql`
       INSERT INTO usage_logs (user_id, operation_type, tokens_used, timestamp)
-      VALUES (${userIdToUse}, ${operation}, ${tokens}, NOW())
+      VALUES (${userId}, ${operation}, ${tokens}, NOW())
     `
   } catch (error) {
     console.error("Increment usage count error:", error)
@@ -63,23 +55,17 @@ export async function incrementUsageCount(userId?: string, operation = "api_call
   }
 }
 
-export async function checkUsageCount(userId?: string): Promise<boolean> {
+export async function checkUsageCount(userId: string): Promise<boolean> {
   try {
-    let userIdToCheck = userId
-
-    if (!userIdToCheck) {
-      const session = await getServerSession(authOptions)
-      if (!session?.user?.id) {
-        return false
-      }
-      userIdToCheck = session.user.id
+    if (!userId) {
+      return false
     }
 
     // Get user's subscription plan
     const users = await sql`
       SELECT subscription_plan, subscription_status
       FROM users 
-      WHERE id = ${userIdToCheck}
+      WHERE id = ${userId}
     `
 
     if (users.length === 0) {
@@ -97,7 +83,7 @@ export async function checkUsageCount(userId?: string): Promise<boolean> {
       const usage = await sql`
         SELECT usage_count
         FROM daily_usage 
-        WHERE user_id = ${userIdToCheck} AND date = ${today}
+        WHERE user_id = ${userId} AND date = ${today}
       `
 
       const currentUsage = usage.length > 0 ? usage[0].usage_count : 0
@@ -109,7 +95,7 @@ export async function checkUsageCount(userId?: string): Promise<boolean> {
     const usage = await sql`
       SELECT usage_count
       FROM daily_usage 
-      WHERE user_id = ${userIdToCheck} AND date = ${today}
+      WHERE user_id = ${userId} AND date = ${today}
     `
 
     const currentUsage = usage.length > 0 ? usage[0].usage_count : 0

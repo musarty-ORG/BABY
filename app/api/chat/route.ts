@@ -1,6 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
+import { requireAuth } from "@/lib/auth-middleware"
 import { checkSubscription } from "@/lib/subscription"
 import { OpenAIStream, StreamingTextResponse } from "@/utils/openai"
 import { generateTitle } from "@/lib/title"
@@ -12,15 +11,15 @@ export const runtime = "edge"
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
-    const session = await getServerSession(authOptions)
+    const session = await requireAuth(req)
     if (!session) {
       return new NextResponse("Unauthorized", { status: 401 })
     }
 
-    const isPro = await checkSubscription()
+    const isPro = await checkSubscription(session.userId)
 
     if (!isPro) {
-      const canUseAPI = await checkUsageCount()
+      const canUseAPI = await checkUsageCount(session.userId)
       if (!canUseAPI) {
         return new NextResponse("Usage limit exceeded", { status: 403 })
       }
@@ -58,7 +57,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const result = await OpenAIStream(response, {
       onCompletion: async (completion: string, usage: any) => {
         if (!isPro) {
-          await incrementUsageCount()
+          await incrementUsageCount(session.userId)
         }
       },
     })

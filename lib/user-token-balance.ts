@@ -1,30 +1,22 @@
 import { neon } from "@neondatabase/serverless"
-import { getServerSession } from "next-auth"
-import { authOptions } from "./auth"
 
 const sql = neon(process.env.NEON_NEON_DATABASE_URL!)
 
-export async function checkUserTokenBalance(userId?: string): Promise<{
+export async function checkUserTokenBalance(userId: string): Promise<{
   hasTokens: boolean
   balance: number
   needsTopup: boolean
   plan: string
 }> {
   try {
-    let userIdToCheck = userId
-
-    if (!userIdToCheck) {
-      const session = await getServerSession(authOptions)
-      if (!session?.user?.id) {
-        return { hasTokens: false, balance: 0, needsTopup: true, plan: "free" }
-      }
-      userIdToCheck = session.user.id
+    if (!userId) {
+      return { hasTokens: false, balance: 0, needsTopup: true, plan: "free" }
     }
 
     const users = await sql`
       SELECT token_balance, subscription_plan, subscription_status
       FROM users 
-      WHERE id = ${userIdToCheck}
+      WHERE id = ${userId}
     `
 
     if (users.length === 0) {

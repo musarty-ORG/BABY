@@ -65,6 +65,37 @@ export default function AdminDashboard() {
   const [searchTerm, setSearchTerm] = useState("")
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [userSession, setUserSession] = useState<any>(null)
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+
+  // Check for user session and admin role
+  useEffect(() => {
+    const sessionToken = localStorage.getItem("session_token")
+    if (sessionToken) {
+      fetch("/api/user/dashboard", {
+        headers: {
+          Authorization: `Bearer ${sessionToken}`,
+        },
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.success && data.data.user.role === 'admin') {
+            setUserSession(data.data.user)
+            setIsAuthenticated(true)
+          } else {
+            setError("Access denied. Admin role required.")
+            setIsLoading(false)
+          }
+        })
+        .catch(() => {
+          setError("Authentication failed. Please log in.")
+          setIsLoading(false)
+        })
+    } else {
+      setError("Please log in to access the admin panel.")
+      setIsLoading(false)
+    }
+  }, [])
 
   // Memoized filtered users for performance
   const filteredUsers = useMemo(() => {
@@ -78,20 +109,27 @@ export default function AdminDashboard() {
 
   // Optimized data fetching with useCallback
   const fetchDashboardData = useCallback(async () => {
+    if (!isAuthenticated || !userSession) return
+    
     try {
       setIsLoading(true)
       setError(null)
 
+      const sessionToken = localStorage.getItem("session_token")
+      const headers = {
+        Authorization: `Bearer ${sessionToken}`,
+      }
+
       const [usersResponse, metricsResponse, activitiesResponse] = await Promise.all([
-        fetch("/api/admin/users").then((res) => {
+        fetch("/api/admin/users", { headers }).then((res) => {
           if (!res.ok) throw new Error(`Failed to fetch users: ${res.status}`)
           return res.json()
         }),
-        fetch("/api/admin/metrics").then((res) => {
+        fetch("/api/admin/metrics", { headers }).then((res) => {
           if (!res.ok) throw new Error(`Failed to fetch metrics: ${res.status}`)
           return res.json()
         }),
-        fetch("/api/admin/activities?limit=10").then((res) => {
+        fetch("/api/admin/activities?limit=10", { headers }).then((res) => {
           if (!res.ok) throw new Error(`Failed to fetch activities: ${res.status}`)
           return res.json()
         }),
@@ -139,11 +177,13 @@ export default function AdminDashboard() {
 
   // Initial data load and periodic refresh
   useEffect(() => {
-    fetchDashboardData()
+    if (isAuthenticated) {
+      fetchDashboardData()
 
-    const interval = setInterval(fetchDashboardData, REFRESH_INTERVAL)
-    return () => clearInterval(interval)
-  }, [fetchDashboardData])
+      const interval = setInterval(fetchDashboardData, REFRESH_INTERVAL)
+      return () => clearInterval(interval)
+    }
+  }, [fetchDashboardData, isAuthenticated])
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -184,21 +224,41 @@ export default function AdminDashboard() {
   }
 
   if (error) {
+    const isAuthError = error.includes("Access denied") || error.includes("Authentication failed") || error.includes("Please log in")
+    
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <Card className="w-full max-w-md">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-red-600">
               <AlertTriangle className="w-5 h-5" />
-              Error Loading Dashboard
+              {isAuthError ? "Access Denied" : "Error Loading Dashboard"}
             </CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-gray-600 mb-4">{error}</p>
-            <Button onClick={fetchDashboardData} className="w-full">
-              <RefreshCw className="w-4 h-4 mr-2" />
-              Retry
-            </Button>
+            {isAuthError ? (
+              <div className="space-y-2">
+                <Button 
+                  onClick={() => window.location.href = "/pricing"} 
+                  className="w-full"
+                >
+                  Go to Login
+                </Button>
+                <Button 
+                  onClick={() => window.location.href = "/"} 
+                  variant="outline"
+                  className="w-full"
+                >
+                  Return Home
+                </Button>
+              </div>
+            ) : (
+              <Button onClick={fetchDashboardData} className="w-full">
+                <RefreshCw className="w-4 h-4 mr-2" />
+                Retry
+              </Button>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -348,38 +408,38 @@ export default function AdminDashboard() {
                   {
                     name: "CODE GENERATOR",
                     status: "ACTIVE",
-                    load: `${Math.floor(Math.random() * 40) + 50}%`,
-                    requests: `${(Math.random() * 2 + 1).toFixed(1)}K`,
+                    load: "75%",
+                    requests: "2.1K",
                   },
                   {
                     name: "VOICE PROCESSOR",
                     status: "ACTIVE",
-                    load: `${Math.floor(Math.random() * 30) + 20}%`,
-                    requests: `${Math.floor(Math.random() * 500) + 500}`,
+                    load: "45%",
+                    requests: "856",
                   },
                   {
                     name: "IMAGE ANALYZER",
                     status: "ACTIVE",
-                    load: `${Math.floor(Math.random() * 35) + 30}%`,
-                    requests: `${Math.floor(Math.random() * 300) + 400}`,
+                    load: "62%",
+                    requests: "723",
                   },
                   {
                     name: "SEARCH CRAWLER",
                     status: "ACTIVE",
-                    load: `${Math.floor(Math.random() * 50) + 60}%`,
-                    requests: `${(Math.random() * 1.5 + 1.5).toFixed(1)}K`,
+                    load: "88%",
+                    requests: "3.2K",
                   },
                   {
                     name: "DEPLOYMENT BOT",
-                    status: Math.random() > 0.7 ? "STANDBY" : "ACTIVE",
-                    load: `${Math.floor(Math.random() * 20) + 10}%`,
-                    requests: `${Math.floor(Math.random() * 200) + 200}`,
+                    status: "ACTIVE",
+                    load: "28%",
+                    requests: "467",
                   },
                   {
                     name: "SECURITY SCANNER",
                     status: "ACTIVE",
-                    load: `${Math.floor(Math.random() * 40) + 40}%`,
-                    requests: `${Math.floor(Math.random() * 300) + 300}`,
+                    load: "53%",
+                    requests: "634",
                   },
                 ].map((agent) => (
                   <Card key={agent.name} className="bg-black border-green-500/30">
