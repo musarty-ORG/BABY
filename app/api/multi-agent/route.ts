@@ -3,14 +3,116 @@ import { orchestrator } from "@/lib/pipeline-orchestrator"
 import { pipelineLogger } from "@/lib/pipeline-logger"
 import type { PipelineRequest } from "@/types/pipeline"
 import { groq } from "@ai-sdk/groq"
+import { openai } from "@ai-sdk/openai"
+import { anthropic } from "@ai-sdk/anthropic"
 import { streamText } from "ai"
 import { searchEngine } from "@/lib/search-engine"
+import { generateRegistryPrompt } from "@/lib/component-registries"
 import { withErrorHandler } from "@/lib/error-handler"
 import { multiAgentRequestSchema } from "@/lib/validation-schemas"
 import { requireAuth, checkRateLimit } from "@/lib/auth-middleware"
 import { analyticsEngine } from "@/lib/analytics-engine"
 
 export const maxDuration = 60
+
+// Dual AI Model Generation Function
+async function handleDualModelGeneration(request: PipelineRequest, session: any) {
+  try {
+    await pipelineLogger.logStage(request.requestId, "DUAL_MODEL_START", null, "Starting dual model generation", 0)
+
+    // Real-time knowledge search
+    let realTimeKnowledge = ""
+    try {
+      if (request.prompt) {
+        const searchQuery = `${request.prompt} modern web development 2024 best practices`
+        const searchResult = await searchEngine.search(searchQuery, 3)
+
+        if (searchResult?.results?.length > 0) {
+          realTimeKnowledge = `=== REAL-TIME KNOWLEDGE (${new Date().toISOString()}) ===\n\n`
+          realTimeKnowledge += `CURRENT BEST PRACTICES:\n`
+          searchResult.results.slice(0, 2).forEach((result, index) => {
+            realTimeKnowledge += `${index + 1}. ${result.title}\n   ${result.content.substring(0, 200)}...\n\n`
+          })
+          realTimeKnowledge += `=== END REAL-TIME KNOWLEDGE ===\n\n`
+        }
+      }
+    } catch (searchError) {
+      console.warn("Real-time search failed:", searchError)
+    }
+
+    const basePrompt = `You are a specialized AI code generation model with real-time knowledge access.
+
+${realTimeKnowledge}
+
+${generateRegistryPrompt()}
+
+Generate a complete, production-ready website based on this request:
+
+${request.prompt}
+
+Requirements:
+- Use modern React/Next.js patterns and practices from 2024
+- Include responsive design with Tailwind CSS
+- Add proper TypeScript types
+- Include error handling and loading states
+- Use current best practices for performance and SEO
+- Make it visually appealing and professional
+- Prefer using established component libraries (shadcn/ui, Headless UI, Radix UI, Chakra UI)
+- Include proper installation commands in comments
+
+Generate clean, functional code ready for deployment.`
+
+    // Model 1: Vercel AI Gateway (OpenAI/Anthropic)
+    const model1Promise = streamText({
+      model: anthropic("claude-3-sonnet-20240229"),
+      prompt: basePrompt,
+      system: "You are Claude, an expert web developer. Create complete, production-ready code with modern patterns and best practices.",
+    })
+
+    // Model 2: Groq (Direct API)
+    const model2Promise = streamText({
+      model: groq("meta-llama/llama-3.1-70b-versatile"),
+      prompt: basePrompt,
+      system: "You are Llama, a powerful code generation AI. Focus on clean, efficient, and modern code architecture.",
+    })
+
+    // Run both models in parallel and get results
+    const [model1Result, model2Result] = await Promise.allSettled([
+      model1Promise.then(r => r.toDataStreamResponse()),
+      model2Promise.then(r => r.toDataStreamResponse())
+    ])
+
+    // Track dual model execution
+    await analyticsEngine.trackEvent({
+      type: "api_call",
+      endpoint: "/api/multi-agent/dual-model",
+      method: "POST",
+      status_code: 200,
+      user_id: session.id,
+      metadata: { 
+        agentMode: "dual-model", 
+        authType: session.authType,
+        model1Status: model1Result.status,
+        model2Status: model2Result.status
+      },
+    })
+
+    // Return the first successful result (fallback to either model)
+    if (model1Result.status === "fulfilled") {
+      await pipelineLogger.logStage(request.requestId, "DUAL_MODEL_COMPLETE", null, "Primary model (Claude) succeeded", 0)
+      return model1Result.value
+    } else if (model2Result.status === "fulfilled") {
+      await pipelineLogger.logStage(request.requestId, "DUAL_MODEL_COMPLETE", null, "Secondary model (Llama) succeeded", 0)
+      return model2Result.value
+    } else {
+      throw new Error("Both AI models failed to generate code")
+    }
+
+  } catch (error) {
+    await pipelineLogger.logError(request.requestId, "DUAL_MODEL", `Dual model generation failed: ${error}`, false)
+    throw error
+  }
+}
 
 export const POST = withErrorHandler(async (req: NextRequest) => {
   const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
@@ -55,6 +157,9 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
 
     case "full-pipeline":
       return await handleFullPipeline(request, session)
+
+    case "dual-model":
+      return await handleDualModelGeneration(request, session)
 
     default:
       throw new Error("Invalid agent mode")
