@@ -127,7 +127,13 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
 
   // Check if GROQ_API_KEY is available
   if (!process.env.GROQ_API_KEY) {
-    throw new Error("GROQ_API_KEY environment variable is missing")
+    return Response.json(
+      { 
+        success: false, 
+        error: "AI service temporarily unavailable. Please try again later or contact support." 
+      },
+      { status: 503 }
+    )
   }
 
   const validatedBody = multiAgentRequestSchema.parse(await req.json())

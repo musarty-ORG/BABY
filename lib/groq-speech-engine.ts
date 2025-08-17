@@ -20,10 +20,13 @@ export class GroqSpeechEngine {
   private isRecording = false
 
   constructor() {
-    this.groq = new Groq({
-      apiKey: process.env.GROQ_API_KEY,
-      dangerouslyAllowBrowser: true, // Only for client-side usage
-    })
+    // Initialize Groq client lazily
+    if (process.env.GROQ_API_KEY) {
+      this.groq = new Groq({
+        apiKey: process.env.GROQ_API_KEY,
+        dangerouslyAllowBrowser: true, // Only for client-side usage
+      })
+    }
   }
 
   private async validateConnection(): Promise<boolean> {
@@ -111,6 +114,10 @@ export class GroqSpeechEngine {
       // Convert blob to File for GROQ API
       const audioFile = new File([audioBlob], "recording.webm", { type: "audio/webm" })
 
+      if (!this.groq) {
+        throw new Error("Speech service not available")
+      }
+
       const transcription = await this.groq.audio.transcriptions.create({
         file: audioFile,
         model: "distil-whisper-large-v3-en",
@@ -133,7 +140,7 @@ export class GroqSpeechEngine {
   ): Promise<ArrayBuffer> {
     try {
       const isConnected = await this.validateConnection()
-      if (!isConnected) {
+      if (!isConnected || !this.groq) {
         throw new Error("Service connection not available")
       }
 

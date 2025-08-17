@@ -1,6 +1,13 @@
 import { neon } from "@neondatabase/serverless"
 
-const sql = neon(process.env.NEON_NEON_DATABASE_URL!)
+let sql: ReturnType<typeof neon> | null = null
+
+function getSql() {
+  if (!sql) {
+    sql = neon(process.env.NEON_NEON_DATABASE_URL!)
+  }
+  return sql
+}
 
 export async function checkSubscription(userId?: string): Promise<boolean> {
   try {
@@ -8,7 +15,7 @@ export async function checkSubscription(userId?: string): Promise<boolean> {
       return false
     }
 
-    const subscriptions = await sql`
+    const subscriptions = await getSql()`
       SELECT subscription_status, subscription_expires_at, subscription_plan
       FROM users 
       WHERE id = ${userId}
@@ -40,7 +47,7 @@ export async function checkSubscription(userId?: string): Promise<boolean> {
 
 export async function getSubscriptionDetails(userId: string) {
   try {
-    const subscriptions = await sql`
+    const subscriptions = await getSql()`
       SELECT subscription_status, subscription_expires_at, subscription_plan, subscription_id
       FROM users 
       WHERE id = ${userId}
@@ -59,7 +66,7 @@ export async function getSubscriptionDetails(userId: string) {
 
 export async function updateSubscriptionStatus(userId: string, status: string, plan?: string, expiresAt?: Date) {
   try {
-    await sql`
+    await getSql()`
       UPDATE users 
       SET 
         subscription_status = ${status},

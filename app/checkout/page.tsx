@@ -154,9 +154,18 @@ export default function CheckoutPage() {
           if (data.success) {
             setUserSession(data.data.user)
             loadVaultedPaymentMethods(sessionToken)
+          } else {
+            // Session invalid, redirect to pricing with auth prompt
+            router.push("/pricing?auth_required=true")
           }
         })
-        .catch(console.error)
+        .catch(() => {
+          // Network error or auth failed, redirect to pricing
+          router.push("/pricing?auth_required=true")
+        })
+    } else {
+      // No session token, redirect to pricing with auth prompt
+      router.push("/pricing?auth_required=true")
     }
   }, [searchParams, router])
 

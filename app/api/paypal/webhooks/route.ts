@@ -1,4 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { createHmac } from "crypto"
 import { databaseService } from "@/lib/database-service"
 import { tokenLedger } from "@/lib/token-ledger"
 import { withErrorHandler } from "@/lib/error-handler"
@@ -9,14 +10,55 @@ const PLAN_CONFIGS = {
   [process.env.PAYPAL_PLAN_ARCHITECT!]: { name: "architect", messages: 25 },
 }
 
+// Verify PayPal webhook signature
+function verifyWebhookSignature(body: string, headers: Record<string, string>): boolean {
+  if (!process.env.PAYPAL_WEBHOOK_SECRET) {
+    console.error("PAYPAL_WEBHOOK_SECRET not configured")
+    return false
+  }
+
+  const authAlgo = headers['paypal-auth-algo']
+  const transmission_id = headers['paypal-transmission-id']
+  const cert_id = headers['paypal-cert-id']
+  const transmission_sig = headers['paypal-transmission-sig']
+  const transmission_time = headers['paypal-transmission-time']
+
+  if (!authAlgo || !transmission_id || !cert_id || !transmission_sig || !transmission_time) {
+    console.error("Missing required PayPal headers for signature verification")
+    return false
+  }
+
+  // For production, you should verify against PayPal's certificate
+  // For now, we'll use a simple HMAC verification if PAYPAL_WEBHOOK_SECRET is set
+  try {
+    const expected_sig = createHmac('sha256', process.env.PAYPAL_WEBHOOK_SECRET)
+      .update(transmission_id + '|' + transmission_time + '|' + process.env.PAYPAL_WEBHOOK_ID + '|' + createHmac('sha256', process.env.PAYPAL_WEBHOOK_SECRET).update(body).digest('base64'))
+      .digest('base64')
+    
+    return transmission_sig === expected_sig
+  } catch (error) {
+    console.error("Webhook signature verification failed:", error)
+    return false
+  }
+}
+
 export const POST = withErrorHandler(async (req: NextRequest) => {
   try {
-    const webhook = await req.json()
+    const body = await req.text()
+    const webhook = JSON.parse(body)
+    
+    // Verify webhook signature for security
+    const headers = Object.fromEntries(req.headers.entries())
+    if (!verifyWebhookSignature(body, headers)) {
+      console.error("Invalid webhook signature")
+      return NextResponse.json({ error: "Invalid signature" }, { status: 401 })
+    }
+
     const eventType = webhook.event_type
 
     // Log webhook events for debugging in development only
     if (process.env.NODE_ENV === 'development') {
-      if (process.env.NODE_ENV === "development") console.log(`[PAYPAL_WEBHOOK] Received: ${eventType}`)
+      console.log(`[PAYPAL_WEBHOOK] Received: ${eventType}`)
     }
 
     switch (eventType) {

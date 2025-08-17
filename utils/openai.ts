@@ -1,14 +1,26 @@
 import { createOpenAI } from "@ai-sdk/openai"
 import { streamText } from "ai"
 
-const openai = createOpenAI({
-  apiKey: process.env.OPENAI_API_KEY!,
-})
+let openai: ReturnType<typeof createOpenAI> | null = null
+
+function getOpenAI() {
+  if (!openai && process.env.OPENAI_API_KEY) {
+    openai = createOpenAI({
+      apiKey: process.env.OPENAI_API_KEY!,
+    })
+  }
+  return openai
+}
 
 export async function OpenAIStream(messages: any[], model = "gpt-4o-mini", temperature = 0.7) {
   try {
+    const openaiClient = getOpenAI()
+    if (!openaiClient) {
+      throw new Error("OpenAI service temporarily unavailable")
+    }
+
     const result = await streamText({
-      model: openai(model),
+      model: openaiClient(model),
       messages,
       temperature,
       maxTokens: 4000,

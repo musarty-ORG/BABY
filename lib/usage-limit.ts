@@ -1,6 +1,13 @@
 import { neon } from "@neondatabase/serverless"
 
-const sql = neon(process.env.NEON_NEON_DATABASE_URL!)
+let sql: ReturnType<typeof neon> | null = null
+
+function getSql() {
+  if (!sql) {
+    sql = neon(process.env.NEON_NEON_DATABASE_URL!)
+  }
+  return sql
+}
 
 // Usage limits per plan
 const USAGE_LIMITS = {
@@ -20,7 +27,7 @@ export async function incrementUsageCount(userId: string, operation = "api_call"
     const today = new Date().toISOString().split("T")[0]
 
     // Check if usage record exists for today
-    const existingUsage = await sql`
+    const existingUsage = await getSql()`
       SELECT id, usage_count, tokens_used
       FROM daily_usage 
       WHERE user_id = ${userId} AND date = ${today}
@@ -28,7 +35,7 @@ export async function incrementUsageCount(userId: string, operation = "api_call"
 
     if (existingUsage.length > 0) {
       // Update existing record
-      await sql`
+      await getSql()`
         UPDATE daily_usage 
         SET 
           usage_count = usage_count + 1,
@@ -38,14 +45,14 @@ export async function incrementUsageCount(userId: string, operation = "api_call"
       `
     } else {
       // Create new record
-      await sql`
+      await getSql()`
         INSERT INTO daily_usage (user_id, date, usage_count, tokens_used, operation_type)
         VALUES (${userId}, ${today}, 1, ${tokens}, ${operation})
       `
     }
 
     // Also log the specific operation
-    await sql`
+    await getSql()`
       INSERT INTO usage_logs (user_id, operation_type, tokens_used, timestamp)
       VALUES (${userId}, ${operation}, ${tokens}, NOW())
     `
@@ -62,7 +69,7 @@ export async function checkUsageCount(userId: string): Promise<boolean> {
     }
 
     // Get user's subscription plan
-    const users = await sql`
+    const users = await getSql()`
       SELECT subscription_plan, subscription_status
       FROM users 
       WHERE id = ${userId}
@@ -80,7 +87,7 @@ export async function checkUsageCount(userId: string): Promise<boolean> {
     if (user.subscription_status === "active" && plan !== "free") {
       // Get today's usage
       const today = new Date().toISOString().split("T")[0]
-      const usage = await sql`
+      const usage = await getSql()`
         SELECT usage_count
         FROM daily_usage 
         WHERE user_id = ${userId} AND date = ${today}
@@ -92,7 +99,7 @@ export async function checkUsageCount(userId: string): Promise<boolean> {
 
     // For free users, check daily limit
     const today = new Date().toISOString().split("T")[0]
-    const usage = await sql`
+    const usage = await getSql()`
       SELECT usage_count
       FROM daily_usage 
       WHERE user_id = ${userId} AND date = ${today}
@@ -111,7 +118,7 @@ export async function getUserUsageStats(userId: string) {
     const today = new Date().toISOString().split("T")[0]
 
     // Get today's usage
-    const todayUsage = await sql`
+    const todayUsage = await getSql()`
       SELECT usage_count, tokens_used
       FROM daily_usage 
       WHERE user_id = ${userId} AND date = ${today}
@@ -119,14 +126,14 @@ export async function getUserUsageStats(userId: string) {
 
     // Get this month's usage
     const thisMonth = new Date().toISOString().substring(0, 7) // YYYY-MM
-    const monthlyUsage = await sql`
+    const monthlyUsage = await getSql()`
       SELECT SUM(usage_count) as total_calls, SUM(tokens_used) as total_tokens
       FROM daily_usage 
       WHERE user_id = ${userId} AND date LIKE ${thisMonth + "%"}
     `
 
     // Get user's plan and limits
-    const users = await sql`
+    const users = await getSql()`
       SELECT subscription_plan, subscription_status
       FROM users 
       WHERE id = ${userId}
@@ -161,7 +168,7 @@ export async function resetDailyUsage(userId: string): Promise<boolean> {
   try {
     const today = new Date().toISOString().split("T")[0]
 
-    await sql`
+    await getSql()`
       DELETE FROM daily_usage 
       WHERE user_id = ${userId} AND date = ${today}
     `

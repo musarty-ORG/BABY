@@ -1,17 +1,31 @@
 import { generateText } from "ai"
 import { createOpenAI } from "@ai-sdk/openai"
 
-const openai = createOpenAI({
-  apiKey: process.env.OPENAI_API_KEY!,
-})
+let openai: ReturnType<typeof createOpenAI> | null = null
+
+function getOpenAI() {
+  if (!openai && process.env.OPENAI_API_KEY) {
+    openai = createOpenAI({
+      apiKey: process.env.OPENAI_API_KEY!,
+    })
+  }
+  return openai
+}
 
 export async function generateTitle(prompt: string): Promise<string> {
   try {
+    const openaiClient = getOpenAI()
+    if (!openaiClient) {
+      // Fallback to a simple title generation based on prompt
+      const words = prompt.split(' ').slice(0, 4).join(' ')
+      return words.length > 30 ? words.substring(0, 30) + '...' : words || 'AI Conversation'
+    }
+
     // Extract the first part of the conversation or prompt
     const truncatedPrompt = prompt.length > 200 ? prompt.substring(0, 200) + "..." : prompt
 
     const { text } = await generateText({
-      model: openai("gpt-4o-mini"),
+      model: openaiClient("gpt-4o-mini"),
       prompt: `Generate a concise, descriptive title (max 6 words) for this conversation or request: "${truncatedPrompt}"
       
       Rules:
@@ -56,8 +70,15 @@ export async function generateTitle(prompt: string): Promise<string> {
 
 export async function generateProjectTitle(description: string): Promise<string> {
   try {
+    const openaiClient = getOpenAI()
+    if (!openaiClient) {
+      // Fallback to simple project name
+      const words = description.split(' ').slice(0, 2).join(' ')
+      return words || 'New Project'
+    }
+
     const { text } = await generateText({
-      model: openai("gpt-4o-mini"),
+      model: openaiClient("gpt-4o-mini"),
       prompt: `Generate a creative project name for: "${description}"
       
       Rules:

@@ -1,6 +1,13 @@
 import { neon } from "@neondatabase/serverless"
 
-const sql = neon(process.env.NEON_NEON_DATABASE_URL!)
+let sql: ReturnType<typeof neon> | null = null
+
+function getSql() {
+  if (!sql) {
+    sql = neon(process.env.NEON_NEON_DATABASE_URL!)
+  }
+  return sql
+}
 
 export async function checkUserTokenBalance(userId: string): Promise<{
   hasTokens: boolean
@@ -13,7 +20,7 @@ export async function checkUserTokenBalance(userId: string): Promise<{
       return { hasTokens: false, balance: 0, needsTopup: true, plan: "free" }
     }
 
-    const users = await sql`
+    const users = await getSql()`
       SELECT token_balance, subscription_plan, subscription_status
       FROM users 
       WHERE id = ${userId}
@@ -57,7 +64,7 @@ export async function checkUserTokenBalance(userId: string): Promise<{
 export async function deductTokens(userId: string, amount: number, operation = "api_call"): Promise<boolean> {
   try {
     // Check if user has active subscription (unlimited tokens)
-    const users = await sql`
+    const users = await getSql()`
       SELECT token_balance, subscription_status, subscription_plan
       FROM users 
       WHERE id = ${userId}
@@ -72,7 +79,7 @@ export async function deductTokens(userId: string, amount: number, operation = "
     // Users with active subscriptions don't need to deduct tokens
     if (user.subscription_status === "active" && user.subscription_plan !== "free") {
       // Log the usage but don't deduct tokens
-      await sql`
+      await getSql()`
         INSERT INTO token_transactions (user_id, amount, operation_type, transaction_type, timestamp)
         VALUES (${userId}, ${amount}, ${operation}, 'usage', NOW())
       `
@@ -85,7 +92,7 @@ export async function deductTokens(userId: string, amount: number, operation = "
     }
 
     // Deduct tokens
-    await sql`
+    await getSql()`
       UPDATE users 
       SET 
         token_balance = token_balance - ${amount},
@@ -94,7 +101,7 @@ export async function deductTokens(userId: string, amount: number, operation = "
     `
 
     // Log the transaction
-    await sql`
+    await getSql()`
       INSERT INTO token_transactions (user_id, amount, operation_type, transaction_type, timestamp)
       VALUES (${userId}, ${amount}, ${operation}, 'deduction', NOW())
     `
@@ -108,7 +115,7 @@ export async function deductTokens(userId: string, amount: number, operation = "
 
 export async function addTokens(userId: string, amount: number, source = "purchase"): Promise<boolean> {
   try {
-    await sql`
+    await getSql()`
       UPDATE users 
       SET 
         token_balance = token_balance + ${amount},
@@ -117,7 +124,7 @@ export async function addTokens(userId: string, amount: number, source = "purcha
     `
 
     // Log the transaction
-    await sql`
+    await getSql()`
       INSERT INTO token_transactions (user_id, amount, operation_type, transaction_type, timestamp)
       VALUES (${userId}, ${amount}, ${source}, 'addition', NOW())
     `
@@ -131,7 +138,7 @@ export async function addTokens(userId: string, amount: number, source = "purcha
 
 export async function getTokenTransactionHistory(userId: string, limit = 50) {
   try {
-    const transactions = await sql`
+    const transactions = await getSql()`
       SELECT amount, operation_type, transaction_type, timestamp
       FROM token_transactions 
       WHERE user_id = ${userId}
@@ -153,7 +160,7 @@ export async function getTokenUsageStats(userId: string) {
 
     // Get today's usage
     const today = new Date().toISOString().split("T")[0]
-    const todayUsage = await sql`
+    const todayUsage = await getSql()`
       SELECT SUM(amount) as tokens_used
       FROM token_transactions 
       WHERE user_id = ${userId} 
@@ -163,7 +170,7 @@ export async function getTokenUsageStats(userId: string) {
 
     // Get this month's usage
     const thisMonth = new Date().toISOString().substring(0, 7)
-    const monthlyUsage = await sql`
+    const monthlyUsage = await getSql()`
       SELECT SUM(amount) as tokens_used
       FROM token_transactions 
       WHERE user_id = ${userId} 

@@ -1,15 +1,15 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, Suspense } from "react"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
-import { Check, Zap, ArrowRight, Sparkles, Star, Crown, Rocket, CheckCircle, XCircle } from "lucide-react"
+import { Check, Zap, ArrowRight, Sparkles, Star, Crown, Rocket, CheckCircle, XCircle, AlertTriangle } from "lucide-react"
 
-export default function PricingPage() {
+function PricingContent() {
   const [billingCycle, setBillingCycle] = useState<"monthly" | "yearly">("monthly")
   const [userSession, setUserSession] = useState<any>(null)
   const [loading, setLoading] = useState(false)
-  const [notification, setNotification] = useState<{type: 'success' | 'error', message: string} | null>(null)
+  const [notification, setNotification] = useState<{type: 'success' | 'error' | 'warning', message: string} | null>(null)
   const searchParams = useSearchParams()
 
   // Add useEffect to check for user session and handle success/error params
@@ -18,6 +18,7 @@ export default function PricingPage() {
     const success = searchParams.get('success')
     const error = searchParams.get('error')
     const messages = searchParams.get('messages')
+    const authRequired = searchParams.get('auth_required')
     
     if (success) {
       let message = ''
@@ -45,10 +46,12 @@ export default function PricingPage() {
           message = 'Payment failed. Please try again.'
       }
       setNotification({ type: 'error', message })
+    } else if (authRequired) {
+      setNotification({ type: 'warning', message: 'Please sign in to continue with your purchase.' })
     }
 
     // Auto-hide notification after 10 seconds
-    if (success || error) {
+    if (success || error || authRequired) {
       const timer = setTimeout(() => {
         setNotification(null)
         // Clean up URL params
@@ -77,6 +80,12 @@ export default function PricingPage() {
 
   // Add subscription handler
   const handleSubscription = async (plan: string) => {
+    // Check if user is authenticated
+    if (!userSession) {
+      setNotification({ type: 'warning', message: 'Please sign in to continue with your subscription.' })
+      return
+    }
+    
     // Redirect to checkout page
     window.location.href = `/checkout?plan=${plan}`
   }
@@ -174,11 +183,15 @@ export default function PricingPage() {
           <div className={`p-4 rounded-lg border backdrop-blur-sm ${
             notification.type === 'success' 
               ? 'bg-green-500/10 border-green-500/30 text-green-300' 
+              : notification.type === 'warning'
+              ? 'bg-yellow-500/10 border-yellow-500/30 text-yellow-300'
               : 'bg-red-500/10 border-red-500/30 text-red-300'
           }`}>
             <div className="flex items-center gap-3">
               {notification.type === 'success' ? (
                 <CheckCircle className="w-5 h-5" />
+              ) : notification.type === 'warning' ? (
+                <AlertTriangle className="w-5 h-5" />
               ) : (
                 <XCircle className="w-5 h-5" />
               )}
@@ -616,5 +629,20 @@ export default function PricingPage() {
         </div>
       </footer>
     </div>
+  )
+}
+
+export default function PricingPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-black text-white font-mono flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-purple-300">Loading pricing...</p>
+        </div>
+      </div>
+    }>
+      <PricingContent />
+    </Suspense>
   )
 }
