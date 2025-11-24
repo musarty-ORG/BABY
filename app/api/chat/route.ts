@@ -8,7 +8,7 @@ import { incrementUsageCount, checkUsageCount } from "@/lib/usage-limit"
 import { billUserForTokens } from "@/lib/billing-middleware"
 import { checkUserTokenBalance } from "@/lib/user-token-balance"
 
-export const runtime = "edge"
+// Removed edge runtime due to next-auth compatibility issues with Node.js crypto
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
