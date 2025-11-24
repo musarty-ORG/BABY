@@ -5,6 +5,7 @@
 import { useState, useRef, useEffect } from "react"
 import { Send, Terminal, Zap, Code, Shield, Brain, ArrowRight, Sparkles, Cpu, Globe, Rocket } from 'lucide-react'
 import Link from "next/link"
+import { SiteHeader } from "@/components/site-header"
 
 export default function CodeHomieHome() {
   const [selectedModel, setSelectedModel] = useState<"scout" | "maverick">("scout")
@@ -79,41 +80,11 @@ export default function CodeHomieHome() {
       </div>
 
       {/* Header */}
-      <header className="relative z-10 border-b border-purple-500/30 bg-black/90 backdrop-blur-sm">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <img
-                src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/hndkjn-12r7gakfDUd4Wz8G5F2UxDVU7EKkCj.png"
-                alt="Code Homie Logo"
-                className="w-12 h-12 rounded-lg"
-              />
-              <div>
-                <h1 className="text-2xl font-bold bg-gradient-to-r from-purple-400 to-cyan-400 bg-clip-text text-transparent">
-                  CODE HOMIE
-                </h1>
-                <p className="text-xs text-purple-300/70">HACK. STACK. HUSTLE.</p>
-              </div>
-            </div>
-
-            <nav className="flex items-center gap-6">
-              <Link href="/" className="text-purple-400 font-semibold border-b-2 border-purple-400 pb-1">
-                Home
-              </Link>
-              <Link href="/multi-agent" className="text-gray-400 hover:text-purple-400 transition-colors font-semibold">
-                CODE HOMIE
-              </Link>
-              <Link href="/pricing" className="text-gray-400 hover:text-purple-400 transition-colors font-semibold">
-                Pricing
-              </Link>
-              <div className="flex items-center gap-2 text-xs">
-                <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                <span className="text-green-400">ONLINE</span>
-              </div>
-            </nav>
-          </div>
-        </div>
-      </header>
+      <SiteHeader 
+        title="CODE HOMIE" 
+        subtitle="HACK. STACK. HUSTLE." 
+        variant="home"
+      />
 
       {/* Main Content */}
       <main className="relative z-10">
