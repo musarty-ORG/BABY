@@ -121,6 +121,7 @@ npm run lint
 - **tsconfig.json**: Path aliases (`@/*`), ES6 target, bundler module resolution
 - **eslint.config.mjs**: Minimal ESLint 9 flat config (known limitation - see KNOWN_ISSUES.md)
 - **tailwind.config.js**: Tailwind configuration with custom theme
+- **postcss.config.js** / **postcss.config.mjs**: Both exist; .js includes autoprefixer, .mjs is newer ESM format
 - **components.json**: shadcn/ui component configuration
 - **.gitignore**: Excludes `.env*`, `.next/`, `node_modules/`, `out/`, `build/`
 
@@ -267,8 +268,8 @@ lib/                 # Core business logic
 next.config.mjs      # Next.js configuration
 package.json         # Dependencies and scripts
 package-lock.json    # Locked dependency versions
-postcss.config.js    # PostCSS configuration
-postcss.config.mjs   # PostCSS ESM config (alternative)
+postcss.config.js    # PostCSS config (includes autoprefixer)
+postcss.config.mjs   # PostCSS ESM config (Tailwind only, newer format)
 public/              # Static assets
 scripts/             # Utility scripts
 styles/              # Additional stylesheets
