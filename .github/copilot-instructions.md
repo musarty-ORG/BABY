@@ -4,8 +4,8 @@
 
 **Code Homie** is an AI-powered web development platform that generates production-ready code using multiple AI models. It's a Next.js 15 application built with React 19, TypeScript, and Tailwind CSS, featuring a sophisticated multi-agent code generation pipeline.
 
-**Repository Stats:**
-- ~23,000 lines of TypeScript/JavaScript code across 155 files
+**Repository Stats (as of Dec 2024):**
+- ~23,000+ lines of TypeScript/JavaScript code across 150+ files
 - Main technologies: Next.js 15.2.4, React 19, TypeScript 5, Tailwind CSS 3.4
 - Key dependencies: Vercel AI SDK, Groq, OpenAI, Anthropic Claude, Neon PostgreSQL, Upstash Redis
 - Primary runtime: Node.js 20.x (tested with v20.19.6) and npm 10.x
@@ -36,8 +36,8 @@ ANTHROPIC_API_KEY=placeholder
 npm install
 ```
 - Takes ~25-30 seconds on typical hardware
-- May show 4-5 npm security warnings (low severity, non-blocking)
-- Installs 598+ packages
+- May show npm security warnings (typically low severity, non-blocking)
+- Installs 600+ packages
 
 **2. Production Build:**
 ```bash
