@@ -1,6 +1,7 @@
 import { neon } from "@neondatabase/serverless"
-import { getServerSession } from "next-auth"
-import { authOptions } from "./auth"
+// TODO: Update to use Neon Auth session management
+// import { getServerSession } from "next-auth"
+// import { authOptions } from "./auth"
 
 const sql = neon(process.env.NEON_NEON_DATABASE_URL!)
 
@@ -14,11 +15,14 @@ export async function checkUserTokenBalance(userId?: string): Promise<{
     let userIdToCheck = userId
 
     if (!userIdToCheck) {
-      const session = await getServerSession(authOptions)
-      if (!session?.user?.id) {
-        return { hasTokens: false, balance: 0, needsTopup: true, plan: "free" }
-      }
-      userIdToCheck = session.user.id
+      // TODO: Get user ID from Neon Auth session
+      // const session = await getServerSession(authOptions)
+      // if (!session?.user?.id) {
+      //   return { hasTokens: false, balance: 0, needsTopup: true, plan: "free" }
+      // }
+      // userIdToCheck = session.user.id
+      console.warn("User ID required for token balance check")
+      return { hasTokens: false, balance: 0, needsTopup: true, plan: "free" }
     }
 
     const users = await sql`

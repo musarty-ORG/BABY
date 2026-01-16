@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
+// TODO: Update to use Neon Auth session management
+// import { getServerSession } from "next-auth"
+// import { authOptions } from "@/lib/auth"
 import { checkSubscription } from "@/lib/subscription"
 import { OpenAIStream, StreamingTextResponse } from "@/utils/openai"
 import { generateTitle } from "@/lib/title"
@@ -12,10 +13,14 @@ import { checkUserTokenBalance } from "@/lib/user-token-balance"
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session) {
-      return new NextResponse("Unauthorized", { status: 401 })
-    }
+    // TODO: Implement Neon Auth session check
+    // const session = await getServerSession(authOptions)
+    // if (!session) {
+    //   return new NextResponse("Unauthorized", { status: 401 })
+    // }
+    
+    // For now, return 401 until Neon Auth is properly integrated
+    return new NextResponse("Authentication required. Neon Auth integration in progress.", { status: 401 })
 
     const isPro = await checkSubscription()
 

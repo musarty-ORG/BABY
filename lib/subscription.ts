@@ -1,6 +1,7 @@
 import { neon } from "@neondatabase/serverless"
-import { getServerSession } from "next-auth"
-import { authOptions } from "./auth"
+// TODO: Update to use Neon Auth session management
+// import { getServerSession } from "next-auth"
+// import { authOptions } from "./auth"
 
 const sql = neon(process.env.NEON_NEON_DATABASE_URL!)
 
@@ -9,11 +10,14 @@ export async function checkSubscription(userId?: string): Promise<boolean> {
     let userIdToCheck = userId
 
     if (!userIdToCheck) {
-      const session = await getServerSession(authOptions)
-      if (!session?.user?.id) {
-        return false
-      }
-      userIdToCheck = session.user.id
+      // TODO: Get user ID from Neon Auth session
+      // const session = await getServerSession(authOptions)
+      // if (!session?.user?.id) {
+      //   return false
+      // }
+      // userIdToCheck = session.user.id
+      console.warn("User ID required for subscription check")
+      return false
     }
 
     const subscriptions = await sql`

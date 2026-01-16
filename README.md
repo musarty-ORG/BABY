@@ -2,14 +2,34 @@
 
 Elite AI Agent powered by Llama 4 Scout
 
+## Authentication
+
+This application uses **Neon Auth** exclusively for all authentication needs. Neon Auth handles:
+
+- User authentication (email/password, OAuth, magic links)
+- OTP verification
+- Email service
+- Rate limiting
+- Row Level Security (RLS)
+- Token management
+- Database session management
+
 ## Setup
 
 ### Prerequisites
 
 - Node.js 20+ 
-- A Neon account with a project
+- A Neon account with Neon Auth enabled
 - API keys for Groq, OpenAI, Anthropic (optional)
 - Upstash Redis (optional)
+
+### Enable Neon Auth
+
+1. Sign up at [neon.tech](https://neon.tech)
+2. Create a new project in the Neon Console
+3. Go to your project settings
+4. Enable **Neon Auth**
+5. Copy your Auth URL (format: `https://ep-xxx.neonauth.c-2.us-east-2.aws.neon.build/dbname/auth`)
 
 ### Environment Variables
 
@@ -19,9 +39,9 @@ Copy `.env.example` to `.env.local` and fill in your values:
 cp .env.example .env.local
 ```
 
-Required variables:
+**Required variables:**
 - `NEON_NEON_DATABASE_URL`: Your Neon Postgres connection string
-- `NEXT_PUBLIC_NEON_AUTH_URL`: Your Neon Auth URL (optional, for Neon Auth features)
+- `NEXT_PUBLIC_NEON_AUTH_URL`: Your Neon Auth URL (required - from Neon Console)
 
 See `.env.example` for all available configuration options.
 
@@ -56,19 +76,18 @@ npm run start
 - AI-powered coding assistant
 - Multi-language support
 - Real-time assistance
-- Neon Auth integration (optional)
+- Neon Auth integration
 - Modern dark theme UI
 
-## Authentication
+## Authentication Routes
 
-This application supports Neon Auth for user authentication. To enable:
+- `/auth/sign-in` - Sign in page
+- `/auth/sign-up` - Sign up page
+- `/auth/forgot-password` - Password reset
+- `/account/profile` - User profile management
+- `/account/settings` - Account settings
 
-1. Enable Neon Auth in your Neon Console
-2. Copy your Auth URL to `NEXT_PUBLIC_NEON_AUTH_URL` in `.env.local`
-3. Visit `/auth` to sign in
-4. Visit `/account` to manage your account
-
-If Neon Auth is not configured, the application will still work but authentication features will be disabled.
+For more information about Neon Auth, visit: https://neon.com/docs/auth/overview
 
 ## License
 
