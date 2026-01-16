@@ -133,5 +133,3 @@ export class AuthSystem {
     return await databaseService.searchUsers(query)
   }
 }
-
-export const authSystem = new AuthSystem()

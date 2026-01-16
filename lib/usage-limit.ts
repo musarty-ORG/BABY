@@ -1,6 +1,7 @@
 import { neon } from "@neondatabase/serverless"
-import { getServerSession } from "next-auth"
-import { authOptions } from "./auth"
+// TODO: Update to use Neon Auth session management
+// import { getServerSession } from "next-auth"
+// import { authOptions } from "./auth"
 
 const sql = neon(process.env.NEON_NEON_DATABASE_URL!)
 
@@ -17,11 +18,13 @@ export async function incrementUsageCount(userId?: string, operation = "api_call
     let userIdToUse = userId
 
     if (!userIdToUse) {
-      const session = await getServerSession(authOptions)
-      if (!session?.user?.id) {
-        throw new Error("No user session found")
-      }
-      userIdToUse = session.user.id
+      // TODO: Get user ID from Neon Auth session
+      // const session = await getServerSession(authOptions)
+      // if (!session?.user?.id) {
+      //   throw new Error("No user session found")
+      // }
+      // userIdToUse = session.user.id
+      throw new Error("User ID required for usage tracking")
     }
 
     // Get current date for daily usage tracking
@@ -68,11 +71,14 @@ export async function checkUsageCount(userId?: string): Promise<boolean> {
     let userIdToCheck = userId
 
     if (!userIdToCheck) {
-      const session = await getServerSession(authOptions)
-      if (!session?.user?.id) {
-        return false
-      }
-      userIdToCheck = session.user.id
+      // TODO: Get user ID from Neon Auth session
+      // const session = await getServerSession(authOptions)
+      // if (!session?.user?.id) {
+      //   return false
+      // }
+      // userIdToCheck = session.user.id
+      console.warn("User ID required for usage check")
+      return false
     }
 
     // Get user's subscription plan

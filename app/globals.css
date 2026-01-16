@@ -55,9 +55,6 @@
   }
   body {
     @apply bg-background text-foreground;
-    background: #000000;
-    color: #22c55e;
-    font-family: "Courier New", monospace;
   }
 }
 
@@ -67,19 +64,19 @@
 }
 
 ::-webkit-scrollbar-track {
-  background: rgba(34, 197, 94, 0.1);
+  background: hsl(var(--muted) / 0.1);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(34, 197, 94, 0.3);
+  background: hsl(var(--muted) / 0.3);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(34, 197, 94, 0.5);
+  background: hsl(var(--muted) / 0.5);
 }
 
 ::selection {
-  background: rgba(34, 197, 94, 0.3);
-  color: #22c55e;
+  background: hsl(var(--primary) / 0.3);
+  color: hsl(var(--primary-foreground));
 }
