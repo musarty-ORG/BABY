@@ -19,14 +19,20 @@ export class AuthSystem {
   private readonly SESSION_EXPIRY = 24 * 60 * 60 // 24 hours
 
   async generateOTP(email: string): Promise<string> {
-    // Generate a cryptographically secure 6-digit OTP using rejection sampling to avoid bias
-    let otp: number
-    do {
-      const bytes = randomBytes(4) // 4 bytes for better uniform distribution
-      otp = bytes.readUInt32BE(0) % 1000000
-    } while (otp > 999999) // Rejection sampling (though highly unlikely given the range)
+    // Generate a cryptographically secure 6-digit OTP by generating each digit independently
+    // This avoids any modulo bias issues
+    const otpDigits: string[] = []
+    for (let i = 0; i < 6; i++) {
+      const byte = randomBytes(1)[0]
+      // Use only the lower 4 bits and map to 0-9, with rejection sampling for values >= 10
+      let digit = byte % 16
+      while (digit >= 10) {
+        digit = randomBytes(1)[0] % 16
+      }
+      otpDigits.push(digit.toString())
+    }
     
-    const otpString = otp.toString().padStart(6, '0')
+    const otpString = otpDigits.join('')
     const key = `otp:${email}`
 
     await redis.setex(key, this.OTP_EXPIRY, otpString)
