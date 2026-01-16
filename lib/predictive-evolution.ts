@@ -180,6 +180,13 @@ export class PredictiveEvolutionEngine {
     const smells: CodeSmell[] = []
 
     try {
+      // ReDoS protection: bound input length for code files (200k chars)
+      const MAX_CODE_LENGTH = 200000
+      if (code.length > MAX_CODE_LENGTH) {
+        console.warn(`Code file ${filePath} exceeds ${MAX_CODE_LENGTH} chars, truncating for analysis`)
+        code = code.substring(0, MAX_CODE_LENGTH)
+      }
+
       // Performance smells
       smells.push(...this.detectPerformanceSmells(code, filePath))
 
@@ -298,22 +305,36 @@ export class PredictiveEvolutionEngine {
   private detectMaintainabilitySmells(code: string, filePath: string): CodeSmell[] {
     const smells: CodeSmell[] = []
 
-    // Detect long functions
-    const functions = code.match(/function\s+\w+\s*$$[^)]*$$\s*{[^}]*}/g) || []
-    functions.forEach((func) => {
-      const lines = func.split("\n").length
-      if (lines > 50) {
-        smells.push({
-          type: "maintainability",
-          severity: "medium",
-          description: `Long function detected (${lines} lines)`,
-          location: { file: filePath },
-          suggestion: "Break down into smaller, more focused functions",
-          autoFixAvailable: false,
-          estimatedImpact: "Improves code readability and maintainability",
-        })
+    // Detect long functions - use a simple line count approach instead of regex
+    // to avoid ReDoS with complex patterns
+    const lines = code.split("\n")
+    let currentFunctionLines = 0
+    let inFunction = false
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i]
+      if (/^\s*function\s+\w+/.test(line) || /^\s*\w+\s*:\s*function/.test(line)) {
+        inFunction = true
+        currentFunctionLines = 1
+      } else if (inFunction) {
+        currentFunctionLines++
+        if (line.includes("}") && !line.includes("{")) {
+          if (currentFunctionLines > 50) {
+            smells.push({
+              type: "maintainability",
+              severity: "medium",
+              description: `Long function detected (${currentFunctionLines} lines)`,
+              location: { file: filePath, line: i - currentFunctionLines + 1 },
+              suggestion: "Break down into smaller, more focused functions",
+              autoFixAvailable: false,
+              estimatedImpact: "Improves code readability and maintainability",
+            })
+          }
+          inFunction = false
+          currentFunctionLines = 0
+        }
       }
-    })
+    }
 
     // Detect magic numbers
     const magicNumbers = code.match(/\b\d{2,}\b/g) || []
@@ -416,6 +437,13 @@ export class PredictiveEvolutionEngine {
     const opportunities: RefactoringOpportunity[] = []
 
     try {
+      // ReDoS protection: bound input length for code files (200k chars)
+      const MAX_CODE_LENGTH = 200000
+      if (code.length > MAX_CODE_LENGTH) {
+        console.warn(`Code file ${filePath} exceeds ${MAX_CODE_LENGTH} chars, truncating for analysis`)
+        code = code.substring(0, MAX_CODE_LENGTH)
+      }
+
       // Extract component opportunities
       opportunities.push(...this.findComponentExtractionOpportunities(code, filePath))
 
