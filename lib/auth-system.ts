@@ -1,5 +1,6 @@
 import { Redis } from "@upstash/redis"
 import { databaseService, type User } from "./database-service"
+import { randomBytes, randomUUID } from "crypto"
 
 const redis = new Redis({
   url: process.env.UPSTASH_REDIS_REST_URL!,
@@ -18,7 +19,9 @@ export class AuthSystem {
   private readonly SESSION_EXPIRY = 24 * 60 * 60 // 24 hours
 
   async generateOTP(email: string): Promise<string> {
-    const otp = Math.random().toString().slice(2, 8).padStart(6, "0")
+    // Generate a cryptographically secure 6-digit OTP
+    const bytes = randomBytes(3) // 3 bytes = 24 bits, enough for 6 digits
+    const otp = (parseInt(bytes.toString('hex'), 16) % 1000000).toString().padStart(6, '0')
     const key = `otp:${email}`
 
     await redis.setex(key, this.OTP_EXPIRY, otp)
@@ -42,7 +45,8 @@ export class AuthSystem {
   }
 
   async createSession(user: User): Promise<string> {
-    const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    // Use crypto-secure UUID for session ID
+    const sessionId = `session_${randomUUID()}`
     const session: Session = {
       userId: user.id,
       email: user.email,
@@ -86,9 +90,9 @@ export class AuthSystem {
     let user = await databaseService.getUserByEmail(email)
 
     if (!user) {
-      // Create new user in database
+      // Create new user in database with crypto-secure UUID
       const newUser = {
-        id: `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        id: `user_${randomUUID()}`,
         email,
         name: email.split("@")[0],
         role: email.includes("admin") ? "admin" : ("user" as const),
