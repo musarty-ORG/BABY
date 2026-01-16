@@ -1,6 +1,6 @@
 "use client"
 
-import { AccountView } from "@neondatabase/auth/react/ui"
+import { AccountView } from "@neondatabase/neon-js/auth/react/ui"
 
 export default function AccountPage() {
   return (
