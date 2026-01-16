@@ -106,39 +106,73 @@ export class PredictiveEvolutionEngine {
       // Store individual behavior
       await redis.setex(behaviorKey, this.BEHAVIOR_TTL, JSON.stringify(behavior))
 
-      // Update behavior patterns
+      // Update behavior patterns with prototype pollution protection
       const existingPatterns = await redis.get(patternKey)
-      let patterns = {}
+      // Use null-prototype object to prevent prototype pollution
+      let patterns: Record<string, any> = Object.create(null)
 
       if (existingPatterns) {
         try {
-          patterns = JSON.parse(existingPatterns as string)
+          const parsed = JSON.parse(existingPatterns as string)
+          // Create null-prototype copy to prevent pollution
+          patterns = Object.create(null)
+          for (const key in parsed) {
+            if (Object.prototype.hasOwnProperty.call(parsed, key)) {
+              patterns[key] = parsed[key]
+            }
+          }
         } catch (parseError) {
           console.warn("Failed to parse existing patterns, starting fresh:", parseError)
-          patterns = {}
+          patterns = Object.create(null)
         }
       }
 
-      if (!patterns[behavior.action]) {
-        patterns[behavior.action] = { count: 0, successRate: 0, avgTime: 0 }
+      // Validate behavior.action to prevent prototype pollution
+      const safeAction = this.sanitizePropertyKey(behavior.action)
+      if (!safeAction) {
+        console.warn("Invalid action key, skipping behavior tracking")
+        return
       }
 
-      patterns[behavior.action].count++
-      patterns[behavior.action].successRate =
-        (patterns[behavior.action].successRate * (patterns[behavior.action].count - 1) +
+      if (!patterns[safeAction]) {
+        patterns[safeAction] = { count: 0, successRate: 0, avgTime: 0 }
+      }
+
+      patterns[safeAction].count++
+      patterns[safeAction].successRate =
+        (patterns[safeAction].successRate * (patterns[safeAction].count - 1) +
           (behavior.context.success ? 1 : 0)) /
-        patterns[behavior.action].count
-      patterns[behavior.action].avgTime =
-        (patterns[behavior.action].avgTime * (patterns[behavior.action].count - 1) + behavior.context.timeSpent) /
-        patterns[behavior.action].count
+        patterns[safeAction].count
+      patterns[safeAction].avgTime =
+        (patterns[safeAction].avgTime * (patterns[safeAction].count - 1) + behavior.context.timeSpent) /
+        patterns[safeAction].count
 
       await redis.setex(patternKey, this.BEHAVIOR_TTL, JSON.stringify(patterns))
 
-      console.log(`Tracked behavior: ${behavior.action} for user ${behavior.userId}`)
+      // Use structured logging to prevent log injection
+      console.log("Tracked behavior:", {
+        action: behavior.action,
+        userId: behavior.userId,
+        timestamp: new Date().toISOString(),
+      })
     } catch (error) {
       console.error("Failed to track user behavior:", error)
       // Don't throw error, just log it so the main functionality continues
     }
+  }
+
+  // Sanitize property keys to prevent prototype pollution
+  private sanitizePropertyKey(key: string): string | null {
+    // Block dangerous property names
+    const dangerousKeys = ["__proto__", "constructor", "prototype"]
+    if (dangerousKeys.includes(key)) {
+      return null
+    }
+    // Only allow alphanumeric, underscore, and hyphen
+    if (!/^[a-zA-Z0-9_-]+$/.test(key)) {
+      return null
+    }
+    return key
   }
 
   // Code Smell Detection
@@ -146,6 +180,13 @@ export class PredictiveEvolutionEngine {
     const smells: CodeSmell[] = []
 
     try {
+      // ReDoS protection: bound input length for code files (200k chars)
+      const MAX_CODE_LENGTH = 200000
+      if (code.length > MAX_CODE_LENGTH) {
+        console.warn(`Code file ${filePath} exceeds ${MAX_CODE_LENGTH} chars, truncating for analysis`)
+        code = code.substring(0, MAX_CODE_LENGTH)
+      }
+
       // Performance smells
       smells.push(...this.detectPerformanceSmells(code, filePath))
 
@@ -264,22 +305,36 @@ export class PredictiveEvolutionEngine {
   private detectMaintainabilitySmells(code: string, filePath: string): CodeSmell[] {
     const smells: CodeSmell[] = []
 
-    // Detect long functions
-    const functions = code.match(/function\s+\w+\s*$$[^)]*$$\s*{[^}]*}/g) || []
-    functions.forEach((func) => {
-      const lines = func.split("\n").length
-      if (lines > 50) {
-        smells.push({
-          type: "maintainability",
-          severity: "medium",
-          description: `Long function detected (${lines} lines)`,
-          location: { file: filePath },
-          suggestion: "Break down into smaller, more focused functions",
-          autoFixAvailable: false,
-          estimatedImpact: "Improves code readability and maintainability",
-        })
+    // Detect long functions - use a simple line count approach instead of regex
+    // to avoid ReDoS with complex patterns
+    const lines = code.split("\n")
+    let currentFunctionLines = 0
+    let inFunction = false
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i]
+      if (/^\s*function\s+\w+/.test(line) || /^\s*\w+\s*:\s*function/.test(line)) {
+        inFunction = true
+        currentFunctionLines = 1
+      } else if (inFunction) {
+        currentFunctionLines++
+        if (line.includes("}") && !line.includes("{")) {
+          if (currentFunctionLines > 50) {
+            smells.push({
+              type: "maintainability",
+              severity: "medium",
+              description: `Long function detected (${currentFunctionLines} lines)`,
+              location: { file: filePath, line: i - currentFunctionLines + 1 },
+              suggestion: "Break down into smaller, more focused functions",
+              autoFixAvailable: false,
+              estimatedImpact: "Improves code readability and maintainability",
+            })
+          }
+          inFunction = false
+          currentFunctionLines = 0
+        }
       }
-    })
+    }
 
     // Detect magic numbers
     const magicNumbers = code.match(/\b\d{2,}\b/g) || []
@@ -382,6 +437,13 @@ export class PredictiveEvolutionEngine {
     const opportunities: RefactoringOpportunity[] = []
 
     try {
+      // ReDoS protection: bound input length for code files (200k chars)
+      const MAX_CODE_LENGTH = 200000
+      if (code.length > MAX_CODE_LENGTH) {
+        console.warn(`Code file ${filePath} exceeds ${MAX_CODE_LENGTH} chars, truncating for analysis`)
+        code = code.substring(0, MAX_CODE_LENGTH)
+      }
+
       // Extract component opportunities
       opportunities.push(...this.findComponentExtractionOpportunities(code, filePath))
 
@@ -711,26 +773,39 @@ export class PredictiveEvolutionEngine {
       if (patterns) {
         let behaviorData
         try {
-          behaviorData = JSON.parse(patterns as string)
+          const parsed = JSON.parse(patterns as string)
+          // Create null-prototype copy to prevent pollution
+          behaviorData = Object.create(null)
+          for (const key in parsed) {
+            if (Object.prototype.hasOwnProperty.call(parsed, key)) {
+              const safeKey = this.sanitizePropertyKey(key)
+              if (safeKey) {
+                behaviorData[safeKey] = parsed[key]
+              }
+            }
+          }
         } catch (parseError) {
           console.warn("Failed to parse behavior patterns:", parseError)
           return insights
         }
 
-        // Analyze patterns for insights
-        for (const [action, data] of Object.entries(behaviorData as any)) {
-          if (data.successRate < 0.5 && data.count > 3) {
-            insights.push({
-              id: `behavior-${action}-${Date.now()}`,
-              type: "behavior-pattern",
-              priority: "medium",
-              title: `Struggling with ${action}`,
-              description: `You've attempted ${action} ${data.count} times with a ${Math.round(data.successRate * 100)}% success rate. Let me suggest some improvements.`,
-              actionable: true,
-              estimatedTimeToImplement: "5-10 minutes",
-              potentialBenefit: "Improved development efficiency and reduced frustration",
-              timestamp: new Date().toISOString(),
-            })
+        // Analyze patterns for insights with safe iteration
+        for (const action in behaviorData) {
+          if (Object.prototype.hasOwnProperty.call(behaviorData, action)) {
+            const data = behaviorData[action]
+            if (data && typeof data === "object" && data.successRate < 0.5 && data.count > 3) {
+              insights.push({
+                id: `behavior-${action}-${Date.now()}`,
+                type: "behavior-pattern",
+                priority: "medium",
+                title: `Struggling with ${action}`,
+                description: `You've attempted ${action} ${data.count} times with a ${Math.round(data.successRate * 100)}% success rate. Let me suggest some improvements.`,
+                actionable: true,
+                estimatedTimeToImplement: "5-10 minutes",
+                potentialBenefit: "Improved development efficiency and reduced frustration",
+                timestamp: new Date().toISOString(),
+              })
+            }
           }
         }
       }

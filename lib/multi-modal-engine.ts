@@ -338,6 +338,13 @@ Make it production-ready with proper component structure.`
 
   private async parseImageAnalysis(analysisText: string): Promise<ImageAnalysis> {
     try {
+      // ReDoS protection: bound input length for text analysis (100k chars)
+      const MAX_TEXT_LENGTH = 100000
+      if (analysisText.length > MAX_TEXT_LENGTH) {
+        console.warn(`Analysis text exceeds ${MAX_TEXT_LENGTH} chars, truncating`)
+        analysisText = analysisText.substring(0, MAX_TEXT_LENGTH)
+      }
+
       // Try to parse structured response first
       const jsonMatch = analysisText.match(/\{[\s\S]*\}/)
       if (jsonMatch) {
@@ -419,10 +426,12 @@ Make it production-ready with proper component structure.`
   }
 
   private extractColorsFromText(text: string): string[] {
-    const colorRegex = /#[0-9a-fA-F]{6}|#[0-9a-fA-F]{3}|rgb$$[^)]+$$|rgba$$[^)]+$$/g
-    const matches = text.match(colorRegex) || []
+    // Non-catastrophic color regex - more specific patterns to prevent ReDoS
+    const hexColors = text.match(/#(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{3})\b/g) || []
+    const rgbColors = text.match(/rgba?\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}(?:\s*,\s*[\d.]+)?\s*\)/g) || []
+    const matches = [...hexColors, ...rgbColors]
     const defaultColors = ["#ffffff", "#000000", "#3b82f6"]
-    return matches.length > 0 ? [...new Set(matches)] : defaultColors
+    return matches.length > 0 ? Array.from(new Set(matches)) : defaultColors
   }
 
   private extractTypographyFromText(text: string): string[] {
@@ -505,6 +514,13 @@ Provide detailed analysis for app development.`
 
   private parseSketchAnalysis(analysisText: string): SketchAnalysis {
     try {
+      // ReDoS protection: bound input length for text analysis (100k chars)
+      const MAX_TEXT_LENGTH = 100000
+      if (analysisText.length > MAX_TEXT_LENGTH) {
+        console.warn(`Analysis text exceeds ${MAX_TEXT_LENGTH} chars, truncating`)
+        analysisText = analysisText.substring(0, MAX_TEXT_LENGTH)
+      }
+
       const jsonMatch = analysisText.match(/\{[\s\S]*\}/)
       if (jsonMatch) {
         return JSON.parse(jsonMatch[0])
@@ -585,6 +601,13 @@ Focus on extracting actionable development requirements.`
 
   private parseVideoAnalysis(analysisText: string, videoFile: File): VideoAnalysis {
     try {
+      // ReDoS protection: bound input length for text analysis (100k chars)
+      const MAX_TEXT_LENGTH = 100000
+      if (analysisText.length > MAX_TEXT_LENGTH) {
+        console.warn(`Analysis text exceeds ${MAX_TEXT_LENGTH} chars, truncating`)
+        analysisText = analysisText.substring(0, MAX_TEXT_LENGTH)
+      }
+
       const jsonMatch = analysisText.match(/\{[\s\S]*\}/)
       if (jsonMatch) {
         return JSON.parse(jsonMatch[0])

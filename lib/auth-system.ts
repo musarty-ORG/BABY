@@ -1,33 +1,135 @@
-/**
- * Auth System - Stub Implementation
- * 
- * TODO: Remove - Neon Auth handles all authentication
- * Neon Auth provides user management, sessions, and authentication out of the box.
- */
+import { Redis } from "@upstash/redis"
+import { databaseService, type User } from "./database-service"
+import { randomBytes, randomUUID } from "crypto"
 
-export const authSystem = {
-  async getUser(userId: string) {
-    console.warn("authSystem.getUser: Use Neon Auth instead")
-    return null
-  },
-  
-  async listUsers() {
-    console.warn("authSystem.listUsers: Use Neon Auth instead")
-    return []
-  },
-  
-  async createUser(data: any) {
-    console.warn("authSystem.createUser: Use Neon Auth instead")
-    throw new Error("Use Neon Auth for user creation")
-  },
-  
-  async updateUser(userId: string, data: any) {
-    console.warn("authSystem.updateUser: Use Neon Auth instead")
-    throw new Error("Use Neon Auth for user updates")
-  },
-  
-  async deleteUser(userId: string) {
-    console.warn("authSystem.deleteUser: Use Neon Auth instead")
-    throw new Error("Use Neon Auth for user deletion")
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+})
+
+export interface Session {
+  userId: string
+  email: string
+  role: string
+  expiresAt: number
+}
+
+export class AuthSystem {
+  private readonly OTP_EXPIRY = 10 * 60 // 10 minutes
+  private readonly SESSION_EXPIRY = 24 * 60 * 60 // 24 hours
+
+  async generateOTP(email: string): Promise<string> {
+    // Generate a cryptographically secure 6-digit OTP by generating each digit independently
+    // This avoids any modulo bias issues
+    const otpDigits: string[] = []
+    for (let i = 0; i < 6; i++) {
+      const byte = randomBytes(1)[0]
+      // Use only the lower 4 bits and map to 0-9, with rejection sampling for values >= 10
+      let digit = byte % 16
+      while (digit >= 10) {
+        digit = randomBytes(1)[0] % 16
+      }
+      otpDigits.push(digit.toString())
+    }
+    
+    const otpString = otpDigits.join('')
+    const key = `otp:${email}`
+
+    await redis.setex(key, this.OTP_EXPIRY, otpString)
+
+    // In production, send email here
+    console.log(`[AUTH] OTP for ${email}: ${otpString}`)
+
+    return otpString
+  }
+
+  async verifyOTP(email: string, otp: string): Promise<boolean> {
+    const key = `otp:${email}`
+    const storedOTP = await redis.get(key)
+
+    if (storedOTP === otp) {
+      await redis.del(key) // Delete used OTP
+      return true
+    }
+
+    return false
+  }
+
+  async createSession(user: User): Promise<string> {
+    // Use crypto-secure UUID for session ID
+    const sessionId = `session_${randomUUID()}`
+    const session: Session = {
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+      expiresAt: Date.now() + this.SESSION_EXPIRY * 1000,
+    }
+
+    await redis.setex(`session:${sessionId}`, this.SESSION_EXPIRY, JSON.stringify(session))
+
+    // Update last login in database
+    await databaseService.updateUserLastLogin(user.email)
+
+    return sessionId
+  }
+
+  async validateSession(sessionId: string): Promise<Session | null> {
+    try {
+      const sessionData = await redis.get(`session:${sessionId}`)
+      if (!sessionData) return null
+
+      const session: Session = JSON.parse(sessionData as string)
+
+      if (session.expiresAt < Date.now()) {
+        await redis.del(`session:${sessionId}`)
+        return null
+      }
+
+      return session
+    } catch (error) {
+      console.error("Session validation error:", error)
+      return null
+    }
+  }
+
+  async destroySession(sessionId: string): Promise<void> {
+    await redis.del(`session:${sessionId}`)
+  }
+
+  async getOrCreateUser(email: string): Promise<User> {
+    // Try to get user from database first
+    let user = await databaseService.getUserByEmail(email)
+
+    if (!user) {
+      // Create new user in database with crypto-secure UUID
+      const role = email.includes("admin") ? ("admin" as const) : ("user" as const)
+      const newUser = {
+        id: `user_${randomUUID()}`,
+        email,
+        name: email.split("@")[0],
+        role,
+        status: "active" as const,
+        metadata: {},
+      }
+
+      user = await databaseService.createUser(newUser)
+    }
+
+    return user
+  }
+
+  async getAllUsers(): Promise<User[]> {
+    return await databaseService.getAllUsers()
+  }
+
+  async updateUser(email: string, updates: Partial<User>): Promise<User | null> {
+    const user = await databaseService.getUserByEmail(email)
+    if (!user) return null
+
+    return await databaseService.updateUser(user.id, updates)
+  }
+
+  async searchUsers(query: string): Promise<User[]> {
+    return await databaseService.searchUsers(query)
   }
 }
