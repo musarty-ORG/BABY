@@ -1,15 +1,17 @@
 "use client"
 
 import { AccountView } from "@neondatabase/neon-js/auth/react/ui"
+import { use } from "react"
 
 interface AccountPageProps {
-  params: {
+  params: Promise<{
     pathname?: string[]
-  }
+  }>
 }
 
 export default function AccountPage({ params }: AccountPageProps) {
-  const pathname = params.pathname?.[0] || 'profile'
+  const resolvedParams = use(params)
+  const pathname = resolvedParams.pathname?.[0] || 'profile'
   
   return (
     <div className="container mx-auto py-8">
