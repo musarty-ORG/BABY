@@ -1,6 +1,7 @@
 import { neon } from "@neondatabase/serverless"
 
-const sql = neon(process.env.NEON_NEON_DATABASE_URL!)
+const connectionString = process.env.NEON_NEON_DATABASE_URL || ""
+const sql = connectionString ? neon(connectionString) : null
 
 export interface User {
   id: string
@@ -83,9 +84,16 @@ export interface PayPalCustomer {
 }
 
 export class DatabaseService {
+  private checkConnection() {
+    if (!sql) {
+      throw new Error("Database not configured. Please set NEON_NEON_DATABASE_URL environment variable.")
+    }
+  }
+
   // User operations
   async createUser(user: Omit<User, "created_at" | "last_login">): Promise<User> {
-    const result = await sql`
+    this.checkConnection()
+    const result = await sql!`
       INSERT INTO users (id, email, name, role, status, metadata)
       VALUES (${user.id}, ${user.email}, ${user.name || null}, ${user.role}, ${user.status}, ${JSON.stringify(user.metadata || {})})
       RETURNING *
@@ -94,20 +102,23 @@ export class DatabaseService {
   }
 
   async getUserByEmail(email: string): Promise<User | null> {
-    const result = await sql`
+    this.checkConnection()
+    const result = await sql!`
       SELECT * FROM users WHERE email = ${email} LIMIT 1
     `
     return result.length > 0 ? this.mapUserRow(result[0]) : null
   }
 
   async getUserById(id: string): Promise<User | null> {
-    const result = await sql`
+    this.checkConnection()
+    const result = await sql!`
       SELECT * FROM users WHERE id = ${id} LIMIT 1
     `
     return result.length > 0 ? this.mapUserRow(result[0]) : null
   }
 
   async updateUser(id: string, updates: Partial<User>): Promise<User | null> {
+    this.checkConnection()
     const setClause = []
     const values = []
 
