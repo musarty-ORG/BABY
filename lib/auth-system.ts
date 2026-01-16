@@ -1,5 +1,6 @@
 import { Redis } from "@upstash/redis"
 import { databaseService, type User } from "./database-service"
+import { randomBytes, randomUUID } from "crypto"
 
 const redis = new Redis({
   url: process.env.UPSTASH_REDIS_REST_URL!,
@@ -18,15 +19,28 @@ export class AuthSystem {
   private readonly SESSION_EXPIRY = 24 * 60 * 60 // 24 hours
 
   async generateOTP(email: string): Promise<string> {
-    const otp = Math.random().toString().slice(2, 8).padStart(6, "0")
+    // Generate a cryptographically secure 6-digit OTP by generating each digit independently
+    // This avoids any modulo bias issues
+    const otpDigits: string[] = []
+    for (let i = 0; i < 6; i++) {
+      const byte = randomBytes(1)[0]
+      // Use only the lower 4 bits and map to 0-9, with rejection sampling for values >= 10
+      let digit = byte % 16
+      while (digit >= 10) {
+        digit = randomBytes(1)[0] % 16
+      }
+      otpDigits.push(digit.toString())
+    }
+    
+    const otpString = otpDigits.join('')
     const key = `otp:${email}`
 
-    await redis.setex(key, this.OTP_EXPIRY, otp)
+    await redis.setex(key, this.OTP_EXPIRY, otpString)
 
     // In production, send email here
-    console.log(`[AUTH] OTP for ${email}: ${otp}`)
+    console.log(`[AUTH] OTP for ${email}: ${otpString}`)
 
-    return otp
+    return otpString
   }
 
   async verifyOTP(email: string, otp: string): Promise<boolean> {
@@ -42,7 +56,8 @@ export class AuthSystem {
   }
 
   async createSession(user: User): Promise<string> {
-    const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    // Use crypto-secure UUID for session ID
+    const sessionId = `session_${randomUUID()}`
     const session: Session = {
       userId: user.id,
       email: user.email,
@@ -86,12 +101,13 @@ export class AuthSystem {
     let user = await databaseService.getUserByEmail(email)
 
     if (!user) {
-      // Create new user in database
+      // Create new user in database with crypto-secure UUID
+      const role = email.includes("admin") ? ("admin" as const) : ("user" as const)
       const newUser = {
-        id: `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        id: `user_${randomUUID()}`,
         email,
         name: email.split("@")[0],
-        role: email.includes("admin") ? "admin" : ("user" as const),
+        role,
         status: "active" as const,
         metadata: {},
       }

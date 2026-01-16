@@ -96,6 +96,14 @@
   },
   "overrides": {
     "react": "^19",
-    "react-dom": "^19"
+    "react-dom": "^19",
+    "set-value": "^4.1.0",
+    "defaults-deep": "^0.2.6",
+    "parse-git-config": "^3.0.0",
+    "braces": "^3.0.3",
+    "micromatch": "^4.0.8",
+    "yargs-parser": "^21.1.1",
+    "expand-object": "^1.0.0",
+    "cookie": "^0.7.0"
   }
 }
