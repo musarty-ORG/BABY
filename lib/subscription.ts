@@ -2,16 +2,10 @@ import { neon } from "@neondatabase/serverless"
 import { getServerSession } from "next-auth"
 import { authOptions } from "./auth"
 
-const connectionString = process.env.NEON_NEON_DATABASE_URL || ""
-const sql = connectionString ? neon(connectionString) : null
+const sql = neon(process.env.NEON_NEON_DATABASE_URL!)
 
 export async function checkSubscription(userId?: string): Promise<boolean> {
   try {
-    if (!sql) {
-      console.warn("Database not configured for subscription check")
-      return false
-    }
-
     let userIdToCheck = userId
 
     if (!userIdToCheck) {
@@ -54,11 +48,6 @@ export async function checkSubscription(userId?: string): Promise<boolean> {
 
 export async function getSubscriptionDetails(userId: string) {
   try {
-    if (!sql) {
-      console.warn("Database not configured for subscription details")
-      return null
-    }
-
     const subscriptions = await sql`
       SELECT subscription_status, subscription_expires_at, subscription_plan, subscription_id
       FROM users 
@@ -78,11 +67,6 @@ export async function getSubscriptionDetails(userId: string) {
 
 export async function updateSubscriptionStatus(userId: string, status: string, plan?: string, expiresAt?: Date) {
   try {
-    if (!sql) {
-      console.warn("Database not configured for subscription update")
-      return false
-    }
-
     await sql`
       UPDATE users 
       SET 

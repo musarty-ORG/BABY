@@ -3,19 +3,7 @@ import { withErrorHandler } from "@/lib/error-handler"
 import { requireAdmin } from "@/lib/auth-middleware"
 import { analyticsEngine } from "@/lib/analytics-engine"
 
-export const dynamic = "force-dynamic"
-
 export const GET = withErrorHandler(async (req: NextRequest) => {
-  // Return early if database is not configured
-  if (!process.env.NEON_NEON_DATABASE_URL) {
-    return Response.json({
-      success: true,
-      activities: [],
-      total: 0,
-      message: "Database not configured"
-    })
-  }
-
   await requireAdmin(req)
 
   const url = new URL(req.url)

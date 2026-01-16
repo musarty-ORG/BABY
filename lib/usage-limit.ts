@@ -2,8 +2,7 @@ import { neon } from "@neondatabase/serverless"
 import { getServerSession } from "next-auth"
 import { authOptions } from "./auth"
 
-const connectionString = process.env.NEON_NEON_DATABASE_URL || ""
-const sql = connectionString ? neon(connectionString) : null
+const sql = neon(process.env.NEON_NEON_DATABASE_URL!)
 
 // Usage limits per plan
 const USAGE_LIMITS = {
@@ -15,11 +14,6 @@ const USAGE_LIMITS = {
 
 export async function incrementUsageCount(userId?: string, operation = "api_call", tokens = 1): Promise<void> {
   try {
-    if (!sql) {
-      console.warn("Database not configured for usage tracking")
-      return
-    }
-
     let userIdToUse = userId
 
     if (!userIdToUse) {
@@ -71,11 +65,6 @@ export async function incrementUsageCount(userId?: string, operation = "api_call
 
 export async function checkUsageCount(userId?: string): Promise<boolean> {
   try {
-    if (!sql) {
-      console.warn("Database not configured for usage checking")
-      return true // Allow usage if database is not configured
-    }
-
     let userIdToCheck = userId
 
     if (!userIdToCheck) {
@@ -133,11 +122,6 @@ export async function checkUsageCount(userId?: string): Promise<boolean> {
 
 export async function getUserUsageStats(userId: string) {
   try {
-    if (!sql) {
-      console.warn("Database not configured for usage stats")
-      return null
-    }
-
     const today = new Date().toISOString().split("T")[0]
 
     // Get today's usage
@@ -189,11 +173,6 @@ export async function getUserUsageStats(userId: string) {
 
 export async function resetDailyUsage(userId: string): Promise<boolean> {
   try {
-    if (!sql) {
-      console.warn("Database not configured for usage reset")
-      return false
-    }
-
     const today = new Date().toISOString().split("T")[0]
 
     await sql`
