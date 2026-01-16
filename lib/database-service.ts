@@ -146,9 +146,9 @@ export class DatabaseService {
 
     if (setClause.length === 0) return null
 
-    const result = await ensureDatabase()`
+    const result = await db`
       UPDATE users 
-      SET ${sql.unsafe(setClause.join(", "))}, last_login = CURRENT_TIMESTAMP
+      SET ${db.unsafe(setClause.join(", "))}, last_login = CURRENT_TIMESTAMP
       WHERE id = ${id}
       RETURNING *
     `
@@ -277,9 +277,10 @@ export class DatabaseService {
 
     if (setClause.length === 0) return null
 
-    const result = await ensureDatabase()`
+    const db = ensureDatabase()
+    const result = await db`
       UPDATE pipeline_jobs 
-      SET ${sql.unsafe(setClause.join(", "))}, updated_at = CURRENT_TIMESTAMP
+      SET ${db.unsafe(setClause.join(", "))}, updated_at = CURRENT_TIMESTAMP
       WHERE id = ${id}
       RETURNING *
     `
@@ -526,9 +527,10 @@ export class DatabaseService {
 
     if (setClause.length === 0) return null
 
-    const result = await ensureDatabase()`
+    const db = ensureDatabase()
+    const result = await db`
       UPDATE subscriptions 
-      SET ${sql.unsafe(setClause.join(", "))}, updated_at = CURRENT_TIMESTAMP
+      SET ${db.unsafe(setClause.join(", "))}, updated_at = CURRENT_TIMESTAMP
       WHERE paypal_subscription_id = ${subscriptionId}
       RETURNING *
     `
