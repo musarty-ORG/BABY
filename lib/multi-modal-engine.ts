@@ -431,7 +431,7 @@ Make it production-ready with proper component structure.`
     const rgbColors = text.match(/rgba?\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}(?:\s*,\s*[\d.]+)?\s*\)/g) || []
     const matches = [...hexColors, ...rgbColors]
     const defaultColors = ["#ffffff", "#000000", "#3b82f6"]
-    return matches.length > 0 ? [...new Set(matches)] : defaultColors
+    return matches.length > 0 ? Array.from(new Set(matches)) : defaultColors
   }
 
   private extractTypographyFromText(text: string): string[] {

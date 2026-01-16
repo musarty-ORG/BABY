@@ -91,11 +91,12 @@ export class AuthSystem {
 
     if (!user) {
       // Create new user in database with crypto-secure UUID
+      const role = email.includes("admin") ? ("admin" as const) : ("user" as const)
       const newUser = {
         id: `user_${randomUUID()}`,
         email,
         name: email.split("@")[0],
-        role: email.includes("admin") ? "admin" : ("user" as const),
+        role,
         status: "active" as const,
         metadata: {},
       }
