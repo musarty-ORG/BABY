@@ -2,7 +2,8 @@ import type { NextAuthOptions } from "next-auth"
 import CredentialsProvider from "next-auth/providers/credentials"
 import { neon } from "@neondatabase/serverless"
 
-const sql = neon(process.env.NEON_NEON_DATABASE_URL!)
+const connectionString = process.env.NEON_NEON_DATABASE_URL || ""
+const sql = connectionString ? neon(connectionString) : null
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -14,6 +15,12 @@ export const authOptions: NextAuthOptions = {
       },
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) {
+          return null
+        }
+
+        // Return null if database is not configured
+        if (!sql) {
+          console.warn("Database not configured for authentication")
           return null
         }
 

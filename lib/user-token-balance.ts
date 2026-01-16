@@ -2,7 +2,8 @@ import { neon } from "@neondatabase/serverless"
 import { getServerSession } from "next-auth"
 import { authOptions } from "./auth"
 
-const sql = neon(process.env.NEON_NEON_DATABASE_URL!)
+const connectionString = process.env.NEON_NEON_DATABASE_URL || ""
+const sql = connectionString ? neon(connectionString) : null
 
 export async function checkUserTokenBalance(userId?: string): Promise<{
   hasTokens: boolean
@@ -11,6 +12,11 @@ export async function checkUserTokenBalance(userId?: string): Promise<{
   plan: string
 }> {
   try {
+    if (!sql) {
+      console.warn("Database not configured for token balance check")
+      return { hasTokens: true, balance: 1000, needsTopup: false, plan: "free" } // Default to allow operations
+    }
+
     let userIdToCheck = userId
 
     if (!userIdToCheck) {

@@ -3,6 +3,17 @@ import { neon } from "@neondatabase/serverless"
 const connectionString = process.env.NEON_NEON_DATABASE_URL || ""
 const sql = connectionString ? neon(connectionString) : null
 
+// Helper to check if database is available
+export const isDatabaseConfigured = () => !!sql
+
+// Helper for database operations
+const ensureDatabase = () => {
+  if (!sql) {
+    throw new Error("Database not configured. Please set NEON_NEON_DATABASE_URL environment variable.")
+  }
+  return sql
+}
+
 export interface User {
   id: string
   email: string
@@ -84,16 +95,10 @@ export interface PayPalCustomer {
 }
 
 export class DatabaseService {
-  private checkConnection() {
-    if (!sql) {
-      throw new Error("Database not configured. Please set NEON_NEON_DATABASE_URL environment variable.")
-    }
-  }
-
   // User operations
   async createUser(user: Omit<User, "created_at" | "last_login">): Promise<User> {
-    this.checkConnection()
-    const result = await sql!`
+    const db = ensureDatabase()
+    const result = await db`
       INSERT INTO users (id, email, name, role, status, metadata)
       VALUES (${user.id}, ${user.email}, ${user.name || null}, ${user.role}, ${user.status}, ${JSON.stringify(user.metadata || {})})
       RETURNING *
@@ -102,23 +107,23 @@ export class DatabaseService {
   }
 
   async getUserByEmail(email: string): Promise<User | null> {
-    this.checkConnection()
-    const result = await sql!`
+    const db = ensureDatabase()
+    const result = await db`
       SELECT * FROM users WHERE email = ${email} LIMIT 1
     `
     return result.length > 0 ? this.mapUserRow(result[0]) : null
   }
 
   async getUserById(id: string): Promise<User | null> {
-    this.checkConnection()
-    const result = await sql!`
+    const db = ensureDatabase()
+    const result = await db`
       SELECT * FROM users WHERE id = ${id} LIMIT 1
     `
     return result.length > 0 ? this.mapUserRow(result[0]) : null
   }
 
   async updateUser(id: string, updates: Partial<User>): Promise<User | null> {
-    this.checkConnection()
+    const db = ensureDatabase()
     const setClause = []
     const values = []
 
@@ -141,7 +146,7 @@ export class DatabaseService {
 
     if (setClause.length === 0) return null
 
-    const result = await sql`
+    const result = await ensureDatabase()`
       UPDATE users 
       SET ${sql.unsafe(setClause.join(", "))}, last_login = CURRENT_TIMESTAMP
       WHERE id = ${id}
@@ -151,13 +156,13 @@ export class DatabaseService {
   }
 
   async updateUserLastLogin(email: string): Promise<void> {
-    await sql`
+    await ensureDatabase()`
       UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE email = ${email}
     `
   }
 
   async getAllUsers(limit = 100, offset = 0): Promise<User[]> {
-    const result = await sql`
+    const result = await ensureDatabase()`
       SELECT * FROM users 
       ORDER BY last_login DESC 
       LIMIT ${limit} OFFSET ${offset}
@@ -166,7 +171,7 @@ export class DatabaseService {
   }
 
   async searchUsers(query: string, limit = 20): Promise<User[]> {
-    const result = await sql`
+    const result = await ensureDatabase()`
       SELECT * FROM users 
       WHERE name ILIKE ${`%${query}%`} OR email ILIKE ${`%${query}%`}
       ORDER BY last_login DESC 
@@ -177,7 +182,7 @@ export class DatabaseService {
 
   // Analytics operations
   async createAnalyticsEvent(event: Omit<AnalyticsEvent, "timestamp">): Promise<void> {
-    await sql`
+    await ensureDatabase()`
       INSERT INTO analytics_events (
         id, type, user_id, endpoint, method, status_code, 
         duration, user_agent, ip_address, metadata
@@ -193,7 +198,7 @@ export class DatabaseService {
   }
 
   async getRecentAnalyticsEvents(limit = 50): Promise<AnalyticsEvent[]> {
-    const result = await sql`
+    const result = await ensureDatabase()`
       SELECT * FROM analytics_events 
       ORDER BY timestamp DESC 
       LIMIT ${limit}
@@ -202,7 +207,7 @@ export class DatabaseService {
   }
 
   async getAnalyticsEventsByType(type: string, limit = 20): Promise<AnalyticsEvent[]> {
-    const result = await sql`
+    const result = await ensureDatabase()`
       SELECT * FROM analytics_events 
       WHERE type = ${type}
       ORDER BY timestamp DESC 
@@ -238,7 +243,7 @@ export class DatabaseService {
 
   // Pipeline job operations
   async createPipelineJob(job: Omit<PipelineJob, "created_at" | "updated_at">): Promise<PipelineJob> {
-    const result = await sql`
+    const result = await ensureDatabase()`
       INSERT INTO pipeline_jobs (id, user_id, job_type, status, input_data, output_data, error_message)
       VALUES (
         ${job.id}, ${job.user_id || null}, ${job.job_type}, ${job.status}, 
@@ -272,7 +277,7 @@ export class DatabaseService {
 
     if (setClause.length === 0) return null
 
-    const result = await sql`
+    const result = await ensureDatabase()`
       UPDATE pipeline_jobs 
       SET ${sql.unsafe(setClause.join(", "))}, updated_at = CURRENT_TIMESTAMP
       WHERE id = ${id}
@@ -282,7 +287,7 @@ export class DatabaseService {
   }
 
   async getPipelineJobsByUser(userId: string, limit = 20): Promise<PipelineJob[]> {
-    const result = await sql`
+    const result = await ensureDatabase()`
       SELECT * FROM pipeline_jobs 
       WHERE user_id = ${userId}
       ORDER BY created_at DESC 
@@ -301,7 +306,7 @@ export class DatabaseService {
     duration?: number
     metadata?: any
   }): Promise<void> {
-    await sql`
+    await ensureDatabase()`
       INSERT INTO audit_logs (id, request_id, stage, input_data, output_data, duration, metadata)
       VALUES (
         ${log.id}, ${log.request_id}, ${log.stage}, 
@@ -312,7 +317,7 @@ export class DatabaseService {
   }
 
   async getAuditLogsByRequestId(requestId: string): Promise<any[]> {
-    const result = await sql`
+    const result = await ensureDatabase()`
       SELECT * FROM audit_logs 
       WHERE request_id = ${requestId}
       ORDER BY timestamp ASC
@@ -327,7 +332,7 @@ export class DatabaseService {
 
   async healthCheck(): Promise<boolean> {
     try {
-      const result = await sql`SELECT 1 as health_check`
+      const result = await ensureDatabase()`SELECT 1 as health_check`
       return result.length > 0 && result[0].health_check === 1
     } catch (error) {
       console.error("Database health check failed:", error)
@@ -337,7 +342,7 @@ export class DatabaseService {
 
   // Project Context operations
   async createProjectContext(context: Omit<any, "id" | "created_at" | "updated_at">): Promise<any> {
-    const result = await sql`
+    const result = await ensureDatabase()`
       INSERT INTO project_contexts (
         user_id, name, type, framework, description, goals, target_audience, 
         business_logic, current_phase, tech_stack, code_style, user_preferences,
@@ -357,7 +362,7 @@ export class DatabaseService {
   }
 
   async getProjectContextsByUser(userId: string): Promise<any[]> {
-    const result = await sql`
+    const result = await ensureDatabase()`
       SELECT * FROM project_contexts 
       WHERE user_id = ${userId} AND is_active = true
       ORDER BY updated_at DESC
@@ -375,7 +380,7 @@ export class DatabaseService {
     error_message?: string
     metadata?: any
   }): Promise<void> {
-    await sql`
+    await ensureDatabase()`
       INSERT INTO email_logs (
         recipient_email, subject, template_name, status, 
         provider_message_id, error_message, metadata, sent_at
@@ -397,7 +402,7 @@ export class DatabaseService {
     category: string
     tags?: any
   }): Promise<void> {
-    await sql`
+    await ensureDatabase()`
       INSERT INTO system_metrics (metric_name, metric_value, metric_unit, category, tags)
       VALUES (
         ${metric.metric_name}, ${metric.metric_value}, ${metric.metric_unit || null},
@@ -417,7 +422,7 @@ export class DatabaseService {
     error_message?: string
     metadata?: any
   }): Promise<void> {
-    await sql`
+    await ensureDatabase()`
       INSERT INTO search_queries (
         user_id, query, search_type, results_count, response_time,
         success, error_message, metadata
@@ -432,7 +437,7 @@ export class DatabaseService {
 
   // Token Ledger operations
   async createTokenLedgerEntry(entry: Omit<TokenLedgerEntry, "created_at">): Promise<TokenLedgerEntry> {
-    const result = await sql`
+    const result = await ensureDatabase()`
       INSERT INTO token_ledger (id, user_id, delta, reason, metadata)
       VALUES (${entry.id}, ${entry.user_id}, ${entry.delta}, ${entry.reason}, ${JSON.stringify(entry.metadata || {})})
       RETURNING *
@@ -442,7 +447,7 @@ export class DatabaseService {
 
   async getUserTokenBalance(userId: string): Promise<UserTokenBalance> {
     // Get user's current plan and subscription info
-    const userResult = await sql`
+    const userResult = await ensureDatabase()`
       SELECT plan, metadata->>'subscription_id' as subscription_id FROM users WHERE id = ${userId}
     `
 
@@ -453,7 +458,7 @@ export class DatabaseService {
     const user = userResult[0]
 
     // Calculate total balance
-    const balanceResult = await sql`
+    const balanceResult = await ensureDatabase()`
       SELECT 
         COALESCE(SUM(delta), 0) as total_balance,
         COALESCE(SUM(CASE WHEN metadata->>'type' = 'monthly' THEN delta ELSE 0 END), 0) as monthly_balance,
@@ -475,7 +480,7 @@ export class DatabaseService {
   }
 
   async getUserTokenLedgerHistory(userId: string, limit = 50): Promise<TokenLedgerEntry[]> {
-    const result = await sql`
+    const result = await ensureDatabase()`
       SELECT * FROM token_ledger 
       WHERE user_id = ${userId}
       ORDER BY created_at DESC 
@@ -493,7 +498,7 @@ export class DatabaseService {
     status: string
     metadata?: any
   }): Promise<any> {
-    const result = await sql`
+    const result = await ensureDatabase()`
       INSERT INTO subscriptions (id, user_id, plan_id, paypal_subscription_id, status, metadata)
       VALUES (${subscription.id}, ${subscription.user_id}, ${subscription.plan_id}, 
               ${subscription.paypal_subscription_id}, ${subscription.status}, 
@@ -521,7 +526,7 @@ export class DatabaseService {
 
     if (setClause.length === 0) return null
 
-    const result = await sql`
+    const result = await ensureDatabase()`
       UPDATE subscriptions 
       SET ${sql.unsafe(setClause.join(", "))}, updated_at = CURRENT_TIMESTAMP
       WHERE paypal_subscription_id = ${subscriptionId}
@@ -531,7 +536,7 @@ export class DatabaseService {
   }
 
   async getSubscriptionByPayPalId(paypalSubscriptionId: string): Promise<any> {
-    const result = await sql`
+    const result = await ensureDatabase()`
       SELECT * FROM subscriptions WHERE paypal_subscription_id = ${paypalSubscriptionId} LIMIT 1
     `
     return result.length > 0 ? result[0] : null
@@ -539,7 +544,7 @@ export class DatabaseService {
 
   // PayPal Customer operations
   async createPayPalCustomer(customer: Omit<PayPalCustomer, "created_at">): Promise<PayPalCustomer> {
-    const result = await sql`
+    const result = await ensureDatabase()`
       INSERT INTO paypal_customers (id, user_id, paypal_customer_id, metadata)
       VALUES (${customer.id}, ${customer.user_id}, ${customer.paypal_customer_id}, ${JSON.stringify(customer.metadata || {})})
       RETURNING *
@@ -548,7 +553,7 @@ export class DatabaseService {
   }
 
   async getPayPalCustomerByUserId(userId: string): Promise<PayPalCustomer | null> {
-    const result = await sql`
+    const result = await ensureDatabase()`
       SELECT * FROM paypal_customers WHERE user_id = ${userId} LIMIT 1
     `
     return result.length > 0 ? this.mapPayPalCustomerRow(result[0]) : null
@@ -558,7 +563,7 @@ export class DatabaseService {
   async createVaultedPaymentMethod(
     method: Omit<VaultedPaymentMethod, "created_at" | "updated_at">,
   ): Promise<VaultedPaymentMethod> {
-    const result = await sql`
+    const result = await ensureDatabase()`
       INSERT INTO vaulted_payment_methods (
         id, user_id, paypal_vault_id, payment_type, last_digits, brand, 
         card_type, expiry, paypal_email, is_default, metadata
@@ -575,7 +580,7 @@ export class DatabaseService {
   }
 
   async getVaultedPaymentMethodsByUserId(userId: string): Promise<VaultedPaymentMethod[]> {
-    const result = await sql`
+    const result = await ensureDatabase()`
       SELECT * FROM vaulted_payment_methods 
       WHERE user_id = ${userId}
       ORDER BY is_default DESC, created_at DESC
@@ -584,21 +589,21 @@ export class DatabaseService {
   }
 
   async deleteVaultedPaymentMethod(id: string): Promise<void> {
-    await sql`
+    await ensureDatabase()`
       DELETE FROM vaulted_payment_methods WHERE id = ${id}
     `
   }
 
   async setDefaultPaymentMethod(userId: string, methodId: string): Promise<void> {
     // First, unset all default methods for this user
-    await sql`
+    await ensureDatabase()`
       UPDATE vaulted_payment_methods 
       SET is_default = false 
       WHERE user_id = ${userId}
     `
 
     // Then set the new default
-    await sql`
+    await ensureDatabase()`
       UPDATE vaulted_payment_methods 
       SET is_default = true 
       WHERE id = ${methodId} AND user_id = ${userId}
