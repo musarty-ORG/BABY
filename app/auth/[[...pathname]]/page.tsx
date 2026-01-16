@@ -11,11 +11,11 @@ interface AuthPageProps {
 
 export default function AuthPage({ params }: AuthPageProps) {
   const resolvedParams = use(params)
-  const pathname = resolvedParams.pathname?.[0] || 'sign-in'
+  const path = resolvedParams.pathname?.[0] || 'sign-in'
   
   return (
     <div className="flex min-h-screen items-center justify-center">
-      <AuthView pathname={pathname} />
+      <AuthView path={path} />
     </div>
   )
 }

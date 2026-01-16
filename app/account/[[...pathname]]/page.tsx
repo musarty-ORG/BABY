@@ -11,11 +11,11 @@ interface AccountPageProps {
 
 export default function AccountPage({ params }: AccountPageProps) {
   const resolvedParams = use(params)
-  const pathname = resolvedParams.pathname?.[0] || 'profile'
+  const path = resolvedParams.pathname?.[0] || 'profile'
   
   return (
     <div className="container mx-auto py-8">
-      <AccountView pathname={pathname} />
+      <AccountView path={path} />
     </div>
   )
 }

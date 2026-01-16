@@ -17,11 +17,18 @@ import { BetterAuthReactAdapter } from '@neondatabase/neon-js/auth/react/adapter
 const authUrl = process.env.NEXT_PUBLIC_NEON_AUTH_URL;
 
 if (!authUrl) {
-  throw new Error(
-    'NEXT_PUBLIC_NEON_AUTH_URL is required. Get this from your Neon Console after enabling Neon Auth.'
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(
+      'NEXT_PUBLIC_NEON_AUTH_URL is required in production. Get this from your Neon Console after enabling Neon Auth.'
+    );
+  }
+  console.warn(
+    '⚠️  NEXT_PUBLIC_NEON_AUTH_URL is not set. Neon Auth features will not work.\n' +
+    '   Get your Auth URL from the Neon Console after enabling Neon Auth.\n' +
+    '   Format: https://ep-xxx.neonauth.c-2.us-east-2.aws.neon.build/dbname/auth'
   );
 }
 
-export const authClient = createAuthClient(authUrl, {
+export const authClient = authUrl ? createAuthClient(authUrl, {
   adapter: BetterAuthReactAdapter(),
-});
+}) : null;
